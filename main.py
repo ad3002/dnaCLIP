@@ -18,7 +18,7 @@ def list_implementations():
         print(f"  Trainer: {components['trainer']}")
     print("\n")
 
-def create_model(implementation: str, model_name: str, dataset_name: str):
+def create_model(implementation: str, model_name: str, dataset_name: str, num_epochs: int = 10):
     # Get implementation components from registry
     head_class, generator_class, trainer_class, test_method = DNAModelRegistry.get_implementation(implementation)
     
@@ -49,7 +49,10 @@ def create_model(implementation: str, model_name: str, dataset_name: str):
     tokenized_dataset = data_generator.prepare_dataset(dataset, tokenizer)
     
     # Create trainer with default arguments
-    training_args = BaseTrainer.get_default_args(f"outputs/{implementation}")
+    training_args = BaseTrainer.get_default_args(
+        f"outputs/{implementation}",
+        num_train_epochs=num_epochs
+    )
     trainer = trainer_class(
         model=model,
         args=training_args,
@@ -63,7 +66,7 @@ def create_model(implementation: str, model_name: str, dataset_name: str):
 
 def main():
     parser = argparse.ArgumentParser(description='DNA Analysis CLI')
-    parser.add_argument('--implementation', type=str, help='Implementation name')
+    parser.add_argument('-i', '--implementation', type=str, help='Implementation name')
     parser.add_argument('--list', action='store_true', help='List available implementations')
     parser.add_argument('--model', type=str, 
                        default="AIRI-Institute/gena-lm-bert-base-t2t-multi",
@@ -71,6 +74,8 @@ def main():
     parser.add_argument('--dataset', type=str,
                        default="yurakuratov/example_promoters_300",
                        help='Dataset name')
+    parser.add_argument('-e', '--epochs', type=int, default=10,
+                       help='Number of training epochs')
     args = parser.parse_args()
     
     if args.list:
@@ -85,7 +90,8 @@ def main():
     model, tokenizer, trainer, data_generator, tokenized_dataset, test_method = create_model(
         args.implementation, 
         args.model,
-        args.dataset
+        args.dataset,
+        args.epochs
     )
     
     # Train model

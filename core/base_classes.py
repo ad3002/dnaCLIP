@@ -81,7 +81,7 @@ class BaseTrainer(Trainer):
         pass
     
     @staticmethod
-    def get_default_args(output_dir: str) -> TrainingArguments:
+    def get_default_args(output_dir: str, num_train_epochs: int = 10) -> TrainingArguments:
         """Get default training arguments"""
         return TrainingArguments(
             output_dir=output_dir,
@@ -92,7 +92,7 @@ class BaseTrainer(Trainer):
             weight_decay=0.0,
             per_device_train_batch_size=32,
             per_device_eval_batch_size=32,
-            num_train_epochs=10,
+            num_train_epochs=num_train_epochs,
             eval_strategy="epoch",
             save_strategy="epoch",
             logging_strategy="epoch",
