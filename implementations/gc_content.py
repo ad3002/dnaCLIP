@@ -10,14 +10,13 @@ from typing import Dict, List, Union
 @dataclass
 class GCDataCollator(DataCollatorWithPadding):
     def __call__(self, features: List[Dict[str, Union[List[int], torch.Tensor]]]) -> Dict[str, torch.Tensor]:
-        # First handle special fields
-        gc_values = [f.pop("gc_content") for f in features]
-        
-        # Then do the normal collation
-        batch = super().__call__(features)
-        
-        # Add back the gc_content as labels
-        batch["labels"] = torch.tensor(gc_values, dtype=torch.float32)
+        # Check if 'gc_content' is present in features
+        if 'gc_content' in features[0]:
+            gc_values = [f.pop("gc_content") for f in features]
+            batch = super().__call__(features)
+            batch["labels"] = torch.tensor(gc_values, dtype=torch.float32)
+        else:
+            batch = super().__call__(features)
         return batch
 
 class GcContentDataGenerator(BaseDataGenerator):
