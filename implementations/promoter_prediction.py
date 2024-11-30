@@ -1,5 +1,5 @@
 from ..core.base_classes import BaseDataGenerator, BaseHead, BaseTrainer
-from ..core.registry import register_dna_model
+from ..core.registry import DNAModelRegistry
 import torch.nn as nn
 import torch.nn.functional as F
 import torch
@@ -31,7 +31,6 @@ class PromoterDataGenerator(BaseDataGenerator):
             
         return dataset.map(preprocess_function, batched=True)
 
-@register_dna_model("promoter")  # Add registration decorator
 class PromoterHead(BaseHead):
     def __init__(self, input_dim=768, n_classes=2):
         super().__init__()
@@ -69,3 +68,11 @@ class PromoterTrainer(BaseTrainer):
         return {
             'accuracy': (predictions == labels).float().mean().item()
         }
+
+# Register implementation after all classes are defined
+DNAModelRegistry.register(
+    "promoter",
+    PromoterHead,
+    PromoterDataGenerator,
+    PromoterTrainer
+)
