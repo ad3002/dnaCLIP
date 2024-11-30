@@ -9,7 +9,8 @@ class GcContentDataGenerator(BaseDataGenerator):
         self.max_length = max_length
     
     def generate_features(self, sequence):
-        return None
+        gc_count = sum(1 for base in sequence.upper() if base in ['G', 'C'])
+        return gc_count / len(sequence) if sequence else 0.0
     
     def prepare_dataset(self, dataset, tokenizer):
         def preprocess_function(examples):
@@ -20,7 +21,8 @@ class GcContentDataGenerator(BaseDataGenerator):
                 padding="max_length",
                 return_tensors=None
             )
-            tokenized['labels'] = examples['gc_content']
+            # Calculate GC content for each sequence
+            tokenized['labels'] = [self.generate_features(seq) for seq in examples["sequence"]]
             return tokenized
             
         return dataset.map(preprocess_function, batched=True)
