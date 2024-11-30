@@ -152,7 +152,7 @@ class GcContentTrainer(BaseTrainer):
             torch.tensor(predictions).flatten(),
             torch.tensor(labels).flatten()
         ]))[0,1]
-            labels = labels.cpu().numpy()
+        labels = labels.cpu().numpy()
             
         # Calculate metrics like in run_gc.py
         mse = np.mean((predictions - labels) ** 2)
