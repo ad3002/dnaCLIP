@@ -312,17 +312,29 @@ class GcContentTrainer(BaseTrainer):
             'sequences': all_sequences
         }
 
-def test_gc_implementation(model, dataset, tokenizer, num_examples=10):
+def test_gc_implementation(model, test_dataset, tokenizer, num_examples=10):
     """Standalone test function for GC content implementation"""
+    if test_dataset is None or len(test_dataset) == 0:
+        raise ValueError("Test dataset is empty or None")
+
     model = model.eval()
     all_predictions = []
     all_labels = []
     all_sequences = []
-    
-    for i in range(0, len(dataset), 32):
-        batch = dataset[i:i+32]
+    batch_size = 32
+
+    # Ensure test_dataset has the required format
+    if not hasattr(test_dataset, '__len__'):
+        raise ValueError("Test dataset must be a sequence-like object")
+
+    for i in range(0, len(test_dataset), batch_size):
+        batch = test_dataset[i:i+batch_size]
+        
+        # Handle both dictionary and dataset-like objects
+        sequences = batch['sequence'] if isinstance(batch, dict) else [item['sequence'] for item in batch]
+        
         inputs = tokenizer(
-            batch['sequence'],
+            sequences,
             return_tensors='pt',
             padding=True,
             truncation=True,
@@ -334,29 +346,31 @@ def test_gc_implementation(model, dataset, tokenizer, num_examples=10):
         
         # Calculate actual GC content
         labels = [sum(1 for base in seq.upper() if base in ['G', 'C'])/len(seq) 
-                 for seq in batch['sequence']]
+                 for seq in sequences]
         
-        all_predictions.extend(predictions)
+        all_predictions.extend(predictions if isinstance(predictions, list) else predictions.tolist())
         all_labels.extend(labels)
-        all_sequences.extend(batch['sequence'])
+        all_sequences.extend(sequences)
     
-    # Calculate and print metrics
-    metrics = GcContentTrainer.get_test_metrics(None, all_predictions, all_labels)
+    # Calculate metrics using the trainer's static method
+    metrics = GcContentTrainer.compute_metrics((np.array(all_predictions), np.array(all_labels)))
+    
+    # Print results
     print("\nTest Results:")
     for metric, value in metrics.items():
-        print(f"{metric.UPPER()}: {value:.4f}")
+        print(f"{metric.upper()}: {value:.4f}")
     
-    # Show sample predictions
-    print("\nSample Predictions:")
-    print("Sequence\t\tPredicted GC\tActual GC\tDiff")
-    print("-" * 70)
-    
-    indices = np.random.choice(len(all_predictions), num_examples, replace=False)
-    for idx in indices:
-        seq = all_sequences[idx]
-        pred = all_predictions[idx]
-        actual = all_labels[idx]
-        print(f"{seq[:20]}...\t{pred:.3f}\t\t{actual:.3f}\t\t{abs(pred-actual):.3f}")
+    if num_examples > 0:
+        print("\nSample Predictions:")
+        print("Sequence\t\tPredicted GC\tActual GC\tDiff")
+        print("-" * 70)
+        
+        indices = np.random.choice(len(all_predictions), min(num_examples, len(all_predictions)), replace=False)
+        for idx in indices:
+            seq = all_sequences[idx]
+            pred = all_predictions[idx]
+            actual = all_labels[idx]
+            print(f"{seq[:20]}...\t{pred:.3f}\t\t{actual:.3f}\t\t{abs(pred-actual):.3f}")
     
     return metrics
 
