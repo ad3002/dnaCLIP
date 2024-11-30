@@ -73,17 +73,35 @@ class GcContentHead(BaseHead):
         return F.mse_loss(outputs.squeeze(), targets.float())
 
 class GcContentTrainer(BaseTrainer):
+    def __init__(self, *args, **kwargs):
+        if 'data_collator' not in kwargs:
+            kwargs['data_collator'] = kwargs['model'].data_generator.data_collator
+        if 'processing_class' not in kwargs:
+            kwargs['processing_class'] = kwargs['tokenizer']
+        super().__init__(*args, **kwargs)
+    
     def compute_loss(self, model, inputs, return_outputs=False, **kwargs):
-        labels = inputs.get('labels')  # Changed from gc_content to labels
-        if labels is None:
-            raise ValueError(f"No labels found in inputs. Keys: {inputs.keys()}")
-            
+        gc_content = inputs["gc_content"] if "gc_content" in inputs else inputs["labels"]
         outputs = model(
             input_ids=inputs["input_ids"],
             attention_mask=inputs["attention_mask"]
         )
-        loss = model.head.compute_loss(outputs, labels)
+        loss = model.head.compute_loss(outputs, gc_content)
         return (loss, outputs) if return_outputs else loss
+
+    def prediction_step(self, model, inputs, prediction_loss_only, ignore_keys=None):
+        """Custom prediction step to ensure consistent shapes"""
+        inputs = self._prepare_inputs(inputs)
+        gc_content = inputs["gc_content"] if "gc_content" in inputs else inputs["labels"]
+        
+        with torch.no_grad():
+            outputs = model(
+                input_ids=inputs["input_ids"],
+                attention_mask=inputs["attention_mask"]
+            )
+            loss = model.head.compute_loss(outputs, gc_content)
+            
+        return (loss.detach(), outputs.detach(), gc_content)
 
     @staticmethod
     def compute_metrics(eval_pred):
