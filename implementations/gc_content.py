@@ -169,7 +169,6 @@ class GcContentTrainer(BaseTrainer):
             'mse': mse,
             'mae': mae,
             'correlation': correlation
-)
         }
 
     def test_model(self, dataset, num_examples=10):
