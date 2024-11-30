@@ -10,13 +10,17 @@ from typing import Dict, List, Union
 @dataclass
 class GCDataCollator(DataCollatorWithPadding):
     def __call__(self, features: List[Dict[str, Union[List[int], torch.Tensor]]]) -> Dict[str, torch.Tensor]:
+        print(f"Debug: First feature keys before collation: {features[0].keys()}")  # Debug info
         batch = super().__call__(features)
         
-        # Handle labels more robustly
-        if "gc_content" in features[0]:
-            batch["labels"] = torch.tensor([f["gc_content"] for f in features], dtype=torch.float32)
-        elif "labels" not in batch:
-            raise ValueError("Neither 'gc_content' nor 'labels' found in features")
+        # Convert gc_content to tensor more robustly
+        if any("gc_content" in f for f in features):
+            batch["labels"] = torch.tensor([
+                f.get("gc_content", 0.0) for f in features
+            ], dtype=torch.float32)
+        else:
+            print(f"Debug: Available keys in first feature: {features[0].keys()}")
+            raise ValueError("No gc_content found in features")
             
         return batch
 
@@ -40,7 +44,11 @@ class GcContentDataGenerator(BaseDataGenerator):
             )
             # Calculate GC content
             gc_content = [self.generate_features(seq) for seq in examples["sequence"]]
+            
+            # Ensure gc_content is added to tokenized output
             tokenized['gc_content'] = gc_content
+            
+            print(f"Debug: Tokenized keys after preprocessing: {tokenized.keys()}")  # Debug info
             return tokenized
             
         # Create custom data collator
@@ -52,8 +60,11 @@ class GcContentDataGenerator(BaseDataGenerator):
             processed_dataset[split] = dataset[split].map(
                 preprocess_function,
                 batched=True,
-                remove_columns=['Unnamed: 0', 'sequence', 'promoter_presence']
+                remove_columns=dataset[split].column_names  # Remove all original columns
             )
+            # Verify processed dataset
+            print(f"Debug: {split} split features: {processed_dataset[split].features}")
+            
         return processed_dataset
 
 class GcContentHead(BaseHead):
