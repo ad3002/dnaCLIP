@@ -74,10 +74,10 @@ class GcContentHead(BaseHead):
 
 class GcContentTrainer(BaseTrainer):
     def __init__(self, *args, **kwargs):
-        if 'data_collator' not in kwargs:
+        # Set data collator if not provided
+        if 'data_collator' not in kwargs and 'model' in kwargs:
             kwargs['data_collator'] = kwargs['model'].data_generator.data_collator
-        if 'processing_class' not in kwargs:
-            kwargs['processing_class'] = kwargs['tokenizer']
+            
         super().__init__(*args, **kwargs)
     
     def compute_loss(self, model, inputs, return_outputs=False, **kwargs):

@@ -38,11 +38,16 @@ class BaseDNAModel(PreTrainedModel):
 
 class BaseTrainer(Trainer):
     def __init__(self, *args, **kwargs):
+        # Handle data collator
         if 'data_collator' not in kwargs and hasattr(kwargs.get('model', None), 'data_generator'):
             kwargs['data_collator'] = kwargs['model'].data_generator.data_collator
-        if 'processing_class' not in kwargs and 'tokenizer' in kwargs:
-            kwargs['processing_class'] = kwargs['tokenizer']
-            kwargs.pop('tokenizer', None)  # Remove tokenizer to avoid warning
+        
+        # Handle tokenizer/processing_class
+        if 'tokenizer' in kwargs:
+            if 'processing_class' not in kwargs:
+                kwargs['processing_class'] = kwargs['tokenizer']
+            kwargs.pop('tokenizer')  # Always remove tokenizer to avoid conflicts
+            
         super().__init__(*args, **kwargs)
     
     @abstractmethod
