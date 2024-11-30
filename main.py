@@ -20,7 +20,7 @@ def list_implementations():
 
 def create_model(implementation: str, model_name: str, dataset_name: str):
     # Get implementation components from registry
-    head_class, generator_class, trainer_class = DNAModelRegistry.get_implementation(implementation)
+    head_class, generator_class, trainer_class, test_method = DNAModelRegistry.get_implementation(implementation)
     
     # Initialize components
     backbone = AutoModel.from_pretrained(model_name)
@@ -46,7 +46,7 @@ def create_model(implementation: str, model_name: str, dataset_name: str):
         data_collator=data_generator.data_collator  # Use the custom data collator
     )
     
-    return model, tokenizer, trainer, data_generator, tokenized_dataset
+    return model, tokenizer, trainer, data_generator, tokenized_dataset, test_method
 
 def main():
     parser = argparse.ArgumentParser(description='DNA Analysis CLI')
@@ -69,7 +69,7 @@ def main():
         return
     
     # Create model, trainer and prepare dataset
-    model, tokenizer, trainer, data_generator, tokenized_dataset = create_model(
+    model, tokenizer, trainer, data_generator, tokenized_dataset, test_method = create_model(
         args.implementation, 
         args.model,
         args.dataset
@@ -77,6 +77,14 @@ def main():
     
     # Train model
     trainer.train()
+    
+    # Run tests
+    if test_method:
+        print("\nRunning implementation-specific tests...")
+        test_method(model, dataset["test"], tokenizer)
+    elif hasattr(trainer, 'test_model'):
+        print("\nRunning trainer's test method...")
+        trainer.test_model(tokenized_dataset["test"])
     
     # Save the model
     trainer.save_model(f"outputs/{args.implementation}/final")

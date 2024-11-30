@@ -23,6 +23,11 @@ class BaseHead(nn.Module, ABC):
     def compute_loss(self, outputs, targets):
         """Compute loss for the head"""
         pass
+    
+    @abstractmethod
+    def test(self, sequence_features, **kwargs):
+        """Test method for head-specific testing logic"""
+        pass
 
 class BaseDNAModel(PreTrainedModel):
     def __init__(self, backbone, head, data_generator):
@@ -53,6 +58,16 @@ class BaseTrainer(Trainer):
     @abstractmethod
     def compute_loss(self, model, inputs, return_outputs=False, **kwargs):
         """Custom loss computation"""
+        pass
+    
+    @abstractmethod
+    def test_model(self, test_dataset, num_examples=10):
+        """Run detailed testing on the model"""
+        pass
+    
+    @abstractmethod
+    def get_test_metrics(self, predictions, labels):
+        """Calculate test-specific metrics"""
         pass
     
     @staticmethod

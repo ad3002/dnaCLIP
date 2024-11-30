@@ -3,6 +3,7 @@ from dnaCLIP.core.registry import DNAModelRegistry
 import torch.nn as nn
 import torch.nn.functional as F
 import torch
+import numpy as np  # Add this import
 from transformers import DataCollatorWithPadding, TrainingArguments  # Added TrainingArguments import
 from dataclasses import dataclass
 from typing import Dict, List, Union
@@ -84,6 +85,11 @@ class GcContentHead(BaseHead):
     
     def compute_loss(self, outputs, targets):
         return F.mse_loss(outputs.squeeze(), targets.float())
+    
+    def test(self, sequence_features, **kwargs):
+        """Test method specifically for GC content prediction"""
+        with torch.no_grad():
+            return self.forward(sequence_features, **kwargs)
 
 class GcContentTrainer(BaseTrainer):
     def __init__(self, *args, **kwargs):
@@ -146,9 +152,155 @@ class GcContentTrainer(BaseTrainer):
             torch.tensor(predictions).flatten(),
             torch.tensor(labels).flatten()
         ]))[0,1]
+            labels = labels.cpu().numpy()
+            
+        # Calculate metrics like in run_gc.py
+        mse = np.mean((predictions - labels) ** 2)
+        mae = np.mean(np.abs(predictions - labels))
+        correlation = np.corrcoef(predictions.flatten(), labels.flatten())[0,1]
+        
+        # Print detailed stats like in run_gc.py
+        print("\nDetailed Evaluation:")
+        print(f"MSE: {mse:.4f}")
+        print(f"MAE: {mae:.4f}")
+        print(f"Correlation: {correlation:.4f}")
+        
         return {
-            'mse': mse.item(),
-            'correlation': correlation.item()
+            'mse': mse,
+            'mae': mae,
+            'correlation': correlation
+)
+        }
+
+    def test_model(self, dataset, num_examples=10):
+        """Test GC content prediction model with detailed analysis"""
+        model = self.model.eval()
+        tokenizer = self.tokenizer
+        all_predictions = []
+        all_labels = []
+        all_sequences = []
+        
+        # Process test set in batches
+        for i in range(0, len(dataset), self.args.per_device_eval_batch_size):
+            batch = dataset[i:i+self.args.per_device_eval_batch_size]
+            inputs = self._prepare_inputs({
+                'input_ids': batch['input_ids'],
+                'attention_mask': batch['attention_mask']
+            })
+            
+            with torch.no_grad():
+                predictions = model(**inputs).cpu().numpy().squeeze()
+            
+            # Get actual GC content
+            labels = batch['gc_content']
+            sequences = [
+                tokenizer.decode(seq, skip_special_tokens=True) 
+                for seq in batch['input_ids']
+            ]
+            
+            all_predictions.extend(predictions)
+            all_labels.extend(labels)
+            all_sequences.extend(sequences)
+        
+        all_predictions = np.array(all_predictions)
+        all_labels = np.array(all_labels)
+        
+        # Calculate metrics
+        mse = np.mean((all_predictions - all_labels) ** 2)
+        mae = np.mean(np.abs(all_predictions - all_labels))
+        correlation = np.corrcoef(all_predictions, all_labels)[0,1]
+        
+        print("\nOverall Performance:")
+        print(f"MSE: {mse:.4f}")
+        print(f"MAE: {mae:.4f}")
+        print(f"Correlation: {correlation:.4f}")
+        
+        print("\nSample Predictions:")
+        print("Sequence\t\tPredicted GC\tActual GC\tDiff")
+        print("-" * 70)
+        
+        # Show sample predictions
+        indices = np.random.choice(len(all_predictions), num_examples, replace=False)
+        for idx in indices:
+            seq = all_sequences[idx]
+            pred = all_predictions[idx]
+            actual = all_labels[idx]
+            print(f"{seq[:20]}...\t{pred:.3f}\t\t{actual:.3f}\t\t{abs(pred-actual):.3f}")
+        
+        return {
+            'mse': mse,
+            'mae': mae,
+            'correlation': correlation,
+            'predictions': all_predictions,
+            'labels': all_labels,
+            'sequences': all_sequences
+        }
+    
+    def get_test_metrics(self, predictions, labels):
+        """Calculate GC content specific metrics"""
+        predictions = np.array(predictions).squeeze()
+        labels = np.array(labels)
+        
+        mse = np.mean((predictions - labels) ** 2)
+        mae = np.mean(np.abs(predictions - labels))
+        correlation = np.corrcoef(predictions.flatten(), labels.flatten())[0,1]
+        
+        return {
+            'mse': mse,
+            'mae': mae,
+            'correlation': correlation
+        }
+    
+    def test_model(self, test_dataset, num_examples=10):
+        """Test GC content prediction model"""
+        model = self.model.eval()
+        all_predictions = []
+        all_labels = []
+        all_sequences = []
+        
+        for i in range(0, len(test_dataset), self.args.per_device_eval_batch_size):
+            batch = test_dataset[i:i+self.args.per_device_eval_batch_size]
+            inputs = self._prepare_inputs(batch)
+            
+            with torch.no_grad():
+                predictions = model(**inputs).cpu().numpy()
+            
+            labels = batch['gc_content']
+            sequences = [
+                self.tokenizer.decode(seq, skip_special_tokens=True) 
+                for seq in batch['input_ids']
+            ]
+            
+            all_predictions.extend(predictions)
+            all_labels.extend(labels)
+            all_sequences.extend(sequences)
+        
+        # Calculate metrics
+        metrics = self.get_test_metrics(all_predictions, all_labels)
+        
+        # Print detailed results
+        print("\nTest Results:")
+        for metric, value in metrics.items():
+            print(f"{metric.upper()}: {value:.4f}")
+        
+        # Show sample predictions
+        if num_examples > 0:
+            print("\nSample Predictions:")
+            print("Sequence\t\tPredicted GC\tActual GC\tDiff")
+            print("-" * 70)
+            
+            indices = np.random.choice(len(all_predictions), num_examples, replace=False)
+            for idx in indices:
+                seq = all_sequences[idx]
+                pred = all_predictions[idx]
+                actual = all_labels[idx]
+                print(f"{seq[:20]}...\t{pred:.3f}\t\t{actual:.3f}\t\t{abs(pred-actual)::.3f}")
+        
+        return {
+            **metrics,
+            'predictions': all_predictions,
+            'labels': all_labels,
+            'sequences': all_sequences
         }
 
     @staticmethod
@@ -157,10 +309,59 @@ class GcContentTrainer(BaseTrainer):
         args.label_names = ["gc_content"]  # Set specific label names for GC content
         return args
 
-# Register implementation
+def test_gc_implementation(model, dataset, tokenizer, num_examples=10):
+    """Standalone test function for GC content implementation"""
+    model = model.eval()
+    all_predictions = []
+    all_labels = []
+    all_sequences = []
+    
+    for i in range(0, len(dataset), 32):
+        batch = dataset[i:i+32]
+        inputs = tokenizer(
+            batch['sequence'],
+            return_tensors='pt',
+            padding=True,
+            truncation=True,
+            max_length=128
+        )
+        
+        with torch.no_grad():
+            predictions = model(**inputs).cpu().numpy().squeeze()
+        
+        # Calculate actual GC content
+        labels = [sum(1 for base in seq.upper() if base in ['G', 'C'])/len(seq) 
+                 for seq in batch['sequence']]
+        
+        all_predictions.extend(predictions)
+        all_labels.extend(labels)
+        all_sequences.extend(batch['sequence'])
+    
+    # Calculate and print metrics
+    metrics = GcContentTrainer.get_test_metrics(None, all_predictions, all_labels)
+    print("\nTest Results:")
+    for metric, value in metrics.items():
+        print(f"{metric.upper()}: {value:.4f}")
+    
+    # Show sample predictions
+    print("\nSample Predictions:")
+    print("Sequence\t\tPredicted GC\tActual GC\tDiff")
+    print("-" * 70)
+    
+    indices = np.random.choice(len(all_predictions), num_examples, replace=False)
+    for idx in indices:
+        seq = all_sequences[idx]
+        pred = all_predictions[idx]
+        actual = all_labels[idx]
+        print(f"{seq[:20]}...\t{pred:.3f}\t\t{actual:.3f}\t\t{abs(pred-actual):.3f}")
+    
+    return metrics
+
+# Register implementation with test function
 DNAModelRegistry.register(
     "gc_content",
     GcContentHead,
     GcContentDataGenerator,
-    GcContentTrainer
+    GcContentTrainer,
+    test_gc_implementation
 )
