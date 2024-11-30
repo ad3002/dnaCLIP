@@ -12,9 +12,11 @@ class GCDataCollator(DataCollatorWithPadding):
     def __call__(self, features: List[Dict[str, Union[List[int], torch.Tensor]]]) -> Dict[str, torch.Tensor]:
         batch = super().__call__(features)
         
-        # Convert gc_content to tensor
+        # Handle labels more robustly
         if "gc_content" in features[0]:
             batch["labels"] = torch.tensor([f["gc_content"] for f in features], dtype=torch.float32)
+        elif "labels" not in batch:
+            raise ValueError("Neither 'gc_content' nor 'labels' found in features")
             
         return batch
 
@@ -74,20 +76,34 @@ class GcContentHead(BaseHead):
 
 class GcContentTrainer(BaseTrainer):
     def __init__(self, *args, **kwargs):
-        # Set data collator if not provided
         if 'data_collator' not in kwargs and 'model' in kwargs:
             kwargs['data_collator'] = kwargs['model'].data_generator.data_collator
-            
         super().__init__(*args, **kwargs)
     
     def compute_loss(self, model, inputs, return_outputs=False, **kwargs):
-        gc_content = inputs["gc_content"] if "gc_content" in inputs else inputs["labels"]
-        outputs = model(
-            input_ids=inputs["input_ids"],
-            attention_mask=inputs["attention_mask"]
-        )
-        loss = model.head.compute_loss(outputs, gc_content)
-        return (loss, outputs) if return_outputs else loss
+        try:
+            # Convert inputs to dict if it's not already
+            if not isinstance(inputs, dict):
+                inputs = inputs.data
+                
+            # Get labels, trying different possible keys
+            if "labels" in inputs:
+                labels = inputs["labels"]
+            elif "gc_content" in inputs:
+                labels = inputs["gc_content"]
+            else:
+                raise KeyError("No labels found in inputs")
+                
+            outputs = model(
+                input_ids=inputs["input_ids"],
+                attention_mask=inputs["attention_mask"]
+            )
+            loss = model.head.compute_loss(outputs, labels)
+            return (loss, outputs) if return_outputs else loss
+            
+        except Exception as e:
+            print(f"Input keys available: {inputs.keys()}")
+            raise e
 
     def prediction_step(self, model, inputs, prediction_loss_only, ignore_keys=None):
         """Custom prediction step to ensure consistent shapes"""

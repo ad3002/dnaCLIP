@@ -35,9 +35,6 @@ def create_model(implementation: str, model_name: str, dataset_name: str):
     dataset = load_dataset(dataset_name)['train'].train_test_split(test_size=0.1)
     tokenized_dataset = data_generator.prepare_dataset(dataset, tokenizer)
     
-    # Create data collator
-    data_collator = DataCollatorWithPadding(tokenizer=tokenizer)
-    
     # Create trainer with default arguments
     training_args = BaseTrainer.get_default_args(f"outputs/{implementation}")
     trainer = trainer_class(
@@ -46,7 +43,7 @@ def create_model(implementation: str, model_name: str, dataset_name: str):
         train_dataset=tokenized_dataset["train"],
         eval_dataset=tokenized_dataset["test"],
         tokenizer=tokenizer,
-        data_collator=data_collator
+        data_collator=data_generator.data_collator  # Use the custom data collator
     )
     
     return model, tokenizer, trainer, data_generator, tokenized_dataset
