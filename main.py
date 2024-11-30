@@ -1,7 +1,7 @@
 import argparse
 from transformers import AutoTokenizer, AutoModel, DataCollatorWithPadding
-from core.base_classes import BaseDNAModel, BaseTrainer
-from core.registry import DNAModelRegistry
+from .core.base_classes import BaseDNAModel, BaseTrainer
+from .core.registry import DNAModelRegistry
 from datasets import load_dataset
 
 # Import all implementations to register them
