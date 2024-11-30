@@ -1,59 +1,37 @@
-
+import sys
 from typing import Dict, Type, Tuple
-from .base_classes import BaseDataGenerator, BaseHead, BaseTrainer
+import inspect
 
 class DNAModelRegistry:
-    _heads: Dict[str, Type[BaseHead]] = {}
-    _generators: Dict[str, Type[BaseDataGenerator]] = {}
-    _trainers: Dict[str, Type[BaseTrainer]] = {}
-    
+    _implementations: Dict[str, Dict] = {}
+
     @classmethod
-    def register_implementation(cls, name: str, head: Type[BaseHead], 
-                             generator: Type[BaseDataGenerator],
-                             trainer: Type[BaseTrainer]):
-        """Register a complete implementation (head, generator, and trainer)."""
-        cls._heads[name] = head
-        cls._generators[name] = generator
-        cls._trainers[name] = trainer
-    
-    @classmethod
-    def get_implementation(cls, name: str) -> Tuple[Type[BaseHead], 
-                                                   Type[BaseDataGenerator],
-                                                   Type[BaseTrainer]]:
-        """Get implementation components by name."""
-        if name not in cls._heads:
-            raise ValueError(f"Implementation '{name}' not found")
-        return cls._heads[name], cls._generators[name], cls._trainers[name]
-    
-    @classmethod
-    def list_implementations(cls) -> Dict[str, Dict]:
-        """List all registered implementations with their components."""
-        return {
-            name: {
-                "head": cls._heads[name].__name__,
-                "generator": cls._generators[name].__name__,
-                "trainer": cls._trainers[name].__name__
-            }
-            for name in cls._heads.keys()
+    def register(cls, name: str, head: Type, generator: Type, trainer: Type) -> None:
+        cls._implementations[name] = {
+            'head': head,
+            'generator': generator,
+            'trainer': trainer
         }
 
-def register_dna_model(name: str):
-    """Decorator to register a set of implementations."""
-    def decorator(head_class: Type[BaseHead]):
-        # Assume generator and trainer classes are in the same module with similar names
-        module = head_class.__module__
-        module_parts = module.split('.')
-        implementation_name = module_parts[-1]
-        
-        # Import related classes
-        import importlib
-        module = importlib.import_module(module)
+    @classmethod
+    def get_implementation(cls, name: str) -> Tuple[Type, Type, Type]:
+        if name not in cls._implementations:
+            raise ValueError(f"Implementation {name} not found")
+        impl = cls._implementations[name]
+        return impl['head'], impl['generator'], impl['trainer']
+
+    @classmethod
+    def list_implementations(cls) -> Dict[str, Dict]:
+        return cls._implementations
+
+def register_dna_model(implementation_name: str):
+    def decorator(head_class):
+        module = sys.modules[head_class.__module__]
         generator_class = getattr(module, f"{implementation_name.title()}DataGenerator")
         trainer_class = getattr(module, f"{implementation_name.title()}Trainer")
         
-        # Register implementation
-        DNAModelRegistry.register_implementation(
-            name,
+        DNAModelRegistry.register(
+            implementation_name,
             head_class,
             generator_class,
             trainer_class

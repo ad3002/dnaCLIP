@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 import torch.nn as nn
-from transformers import Trainer, TrainingArguments
+from transformers import Trainer, TrainingArguments, PreTrainedModel
 
 class BaseDataGenerator(ABC):
     @abstractmethod
@@ -24,21 +24,16 @@ class BaseHead(nn.Module, ABC):
         """Compute loss for the head"""
         pass
 
-class BaseDNAModel(nn.Module):
+class BaseDNAModel(PreTrainedModel):
     def __init__(self, backbone, head, data_generator):
-        super().__init__()
+        super().__init__(backbone.config)
         self.backbone = backbone
         self.head = head
         self.data_generator = data_generator
     
-    def forward(self, input_ids, attention_mask, **kwargs):
-        sequence_features = self.backbone(
-            input_ids=input_ids,
-            attention_mask=attention_mask,
-            output_hidden_states=True,
-            return_dict=True
-        ).hidden_states[-1][:, 0]  # Using [CLS] token
-        
+    def forward(self, input_ids, attention_mask=None, **kwargs):
+        outputs = self.backbone(input_ids, attention_mask=attention_mask)
+        sequence_features = outputs.last_hidden_state[:, 0, :]  # Use CLS token
         return self.head(sequence_features, **kwargs)
 
 class BaseTrainer(Trainer):
