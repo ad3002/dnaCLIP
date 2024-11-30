@@ -1,11 +1,13 @@
 import argparse
 from transformers import AutoTokenizer, AutoModel, DataCollatorWithPadding
-from .core.base_classes import BaseDNAModel, BaseTrainer
-from .core.registry import DNAModelRegistry
+from dnaCLIP.core.base_classes import BaseDNAModel, BaseTrainer
+from dnaCLIP.core.registry import DNAModelRegistry
 from datasets import load_dataset
 
-# Import all implementations to register them
-from .implementations import promoter_prediction, gc_content, splice_sites
+# Import implementations to trigger registration
+import dnaCLIP.implementations.promoter_prediction
+import dnaCLIP.implementations.gc_content
+import dnaCLIP.implementations.splice_sites
 
 def list_implementations():
     implementations = DNAModelRegistry.list_implementations()

@@ -1,5 +1,5 @@
-from ..core.base_classes import BaseDataGenerator, BaseHead, BaseTrainer
-from ..core.registry import DNAModelRegistry
+from dnaCLIP.core.base_classes import BaseDataGenerator, BaseHead, BaseTrainer
+from dnaCLIP.core.registry import DNAModelRegistry
 import torch.nn as nn
 import torch.nn.functional as F
 import torch
