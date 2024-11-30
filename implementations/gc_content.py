@@ -21,11 +21,18 @@ class GcContentDataGenerator(BaseDataGenerator):
                 padding="max_length",
                 return_tensors=None
             )
-            # Calculate GC content for each sequence
-            tokenized['labels'] = [self.generate_features(seq) for seq in examples["sequence"]]
+            # Calculate GC content and convert to float32
+            tokenized['labels'] = torch.tensor(
+                [self.generate_features(seq) for seq in examples["sequence"]],
+                dtype=torch.float32
+            )
             return tokenized
             
-        return dataset.map(preprocess_function, batched=True)
+        return dataset.map(
+            preprocess_function,
+            batched=True,
+            remove_columns=dataset.column_names
+        )
 
 class GcContentHead(BaseHead):
     def __init__(self, input_dim=768):
@@ -43,21 +50,21 @@ class GcContentHead(BaseHead):
 
 class GcContentTrainer(BaseTrainer):
     def compute_loss(self, model, inputs, return_outputs=False, **kwargs):
-        # Handle labels that might be in inputs or inputs.data
-        if hasattr(inputs, 'data'):
+        labels = inputs.get('labels')
+        if labels is None and hasattr(inputs, 'data'):
             labels = inputs.data.get('labels')
-            input_data = inputs.data
-        else:
-            labels = inputs.get('labels')
-            input_data = inputs
+            inputs = inputs.data
             
         if labels is None:
-            raise ValueError("No labels found in inputs")
+            raise ValueError("No labels found in inputs. Input keys: " + str(inputs.keys()))
             
         outputs = model(
-            input_ids=input_data["input_ids"],
-            attention_mask=input_data["attention_mask"]
+            input_ids=inputs["input_ids"],
+            attention_mask=inputs["attention_mask"]
         )
+        
+        # Ensure labels are float32
+        labels = labels.to(dtype=torch.float32)
         loss = model.head.compute_loss(outputs, labels)
         return (loss, outputs) if return_outputs else loss
 
