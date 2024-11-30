@@ -25,9 +25,9 @@ class SpliceSiteCLIP(nn.Module):
         super().__init__()
         self.sequence_encoder = gena_lm
         
-        # Unfreeze GENA-LM weights to allow fine-tuning
+        # Freeze GENA-LM weights initially
         for param in self.sequence_encoder.parameters():
-            param.requires_grad = True  # Change to True
+            param.requires_grad = False
         
         self.sequence_projector = nn.Sequential(
             nn.Linear(768, 512),
@@ -69,43 +69,62 @@ class SpliceSiteCLIP(nn.Module):
 metric = evaluate.load("accuracy")
     
 def compute_metrics(eval_pred):
+    # Unpack the evaluation prediction tuple
     logits_and_embeddings, labels = eval_pred
+    
     if logits_and_embeddings is None:
         return {"eval_accuracy": 0.0, "eval_loss": float('inf')}
-    
+        
     sequence_embeddings, feature_embeddings = logits_and_embeddings
     
-    # Normalize embeddings
-    sequence_embeddings = F.normalize(sequence_embeddings, dim=-1)
-    feature_embeddings = F.normalize(feature_embeddings, dim=-1)
+    # Convert numpy arrays to torch tensors if needed
+    if isinstance(sequence_embeddings, np.ndarray):
+        sequence_embeddings = torch.from_numpy(sequence_embeddings)
+        feature_embeddings = torch.from_numpy(feature_embeddings)
     
-    # Compute similarity matrix
-    similarity = torch.matmul(sequence_embeddings, feature_embeddings.T)
-    similarity = similarity / 0.07  # Use the same temperature
-    
-    # Predictions and labels
-    predictions = similarity.argmax(dim=1).cpu().numpy()
-    labels = labels.cpu().numpy()
-    
-    # Compute accuracy
-    accuracy = (predictions == labels).mean()
-    loss = F.cross_entropy(similarity, torch.from_numpy(labels).to(similarity.device)).item()
+    # Compute similarity matrix and get predictions
+    with torch.no_grad():
+        # Normalize embeddings
+        sequence_embeddings = F.normalize(sequence_embeddings, dim=-1)
+        feature_embeddings = F.normalize(feature_embeddings, dim=-1)
+        
+        # Compute cosine similarity
+        similarity = torch.matmul(sequence_embeddings, feature_embeddings.T)
+        
+        # Scale by temperature
+        temperature = 0.07
+        similarity = similarity / temperature
+        
+        # Convert to probabilities
+        probs = F.softmax(similarity, dim=-1)
+        
+        # Get predictions
+        predictions = torch.argmax(probs, dim=1).cpu().numpy()
+        labels = np.arange(len(predictions))
+        
+        # Compute cross entropy loss
+        loss = F.cross_entropy(similarity, torch.from_numpy(labels).to(similarity.device))
+        
+        # Compute accuracy
+        correct = (predictions == labels).sum()
+        total = len(predictions)
+        accuracy = float(correct) / total
     
     return {
         "eval_accuracy": accuracy,
-        "eval_loss": loss
+        "eval_loss": loss.item(),
+        "eval_correct": correct,
+        "eval_total": total
     }
 
 def compute_clip_loss(model, sequence_embeddings, feature_embeddings):
     # Compute similarity matrix
-    similarity = torch.matmul(sequence_embeddings, feature_embeddings.T)
+    similarity = torch.matmul(
+        sequence_embeddings, feature_embeddings.T
+    ) / model.temperature
     
-    # Apply temperature scaling
-    similarity = similarity / model.temperature
-    
-    # Use labels from 0 to batch_size - 1
-    batch_size = sequence_embeddings.size(0)
-    labels = torch.arange(batch_size).to(sequence_embeddings.device)
+    # Labels are the diagonal elements (positive pairs)
+    labels = torch.arange(len(sequence_embeddings)).to(sequence_embeddings.device)
     
     # Compute loss in both directions
     loss_sequence = F.cross_entropy(similarity, labels)
@@ -166,9 +185,8 @@ class CLIPTrainer(Trainer):
 class CLIPDataCollator(DataCollatorWithPadding):
     def __call__(self, features):
         batch = super().__call__(features)
-        # Use the sample indices as labels to ensure consistency across epochs
-        batch_size = len(features)
-        batch["labels"] = torch.arange(batch_size)
+        # Add labels as indices
+        batch["labels"] = torch.arange(len(features))
         return batch
 
 def train_model(model, tokenizer, tokenized_dataset, data_collator):
