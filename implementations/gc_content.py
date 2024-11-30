@@ -3,7 +3,7 @@ from dnaCLIP.core.registry import DNAModelRegistry
 import torch.nn as nn
 import torch.nn.functional as F
 import torch
-from transformers import DataCollatorWithPadding
+from transformers import DataCollatorWithPadding, TrainingArguments  # Added TrainingArguments import
 from dataclasses import dataclass
 from typing import Dict, List, Union
 
