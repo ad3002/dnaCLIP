@@ -97,7 +97,45 @@ class GcContentTrainer(BaseTrainer):
         if training_args:
             # Ensure label_names is set
             training_args.label_names = ["gc_content"]
+            
+        # Set compute_metrics before parent initialization
+        if 'compute_metrics' not in kwargs:
+            kwargs['compute_metrics'] = self.compute_metrics
+            
         super().__init__(*args, **kwargs)
+
+    @staticmethod
+    def get_default_args(output_dir: str) -> TrainingArguments:
+        args = BaseTrainer.get_default_args(output_dir)
+        args.label_names = ["gc_content"]
+        args.metric_for_best_model = "eval_correlation"  # Add this
+        args.greater_is_better = True  # Higher correlation is better
+        args.evaluation_strategy = "steps"  # Change to more frequent evaluation
+        args.eval_steps = 100  # Evaluate every 100 steps
+        args.logging_steps = 100  # Log every 100 steps
+        return args
+
+    @staticmethod
+    def compute_metrics(eval_pred):
+        predictions, labels = eval_pred
+        predictions = predictions.squeeze()
+        
+        # Convert to numpy if needed
+        if isinstance(predictions, torch.Tensor):
+            predictions = predictions.cpu().numpy()
+        if isinstance(labels, torch.Tensor):
+            labels = labels.cpu().numpy()
+            
+        # Calculate metrics
+        mse = np.mean((predictions - labels) ** 2)
+        mae = np.mean(np.abs(predictions - labels))
+        correlation = np.corrcoef(predictions.flatten(), labels.flatten())[0,1]
+        
+        return {
+            'mse': mse,
+            'mae': mae,
+            'correlation': correlation
+        }
 
     def _prepare_inputs(self, inputs):
         """Prepare inputs before compute_loss is called"""
@@ -142,34 +180,6 @@ class GcContentTrainer(BaseTrainer):
             loss = model.head.compute_loss(outputs, gc_content)
             
         return (loss.detach(), outputs.detach(), gc_content)
-
-    @staticmethod
-    def compute_metrics(eval_pred):
-        predictions, labels = eval_pred
-        predictions = predictions.squeeze()
-        mse = F.mse_loss(torch.tensor(predictions), torch.tensor(labels))
-        correlation = torch.corrcoef(torch.stack([
-            torch.tensor(predictions).flatten(),
-            torch.tensor(labels).flatten()
-        ]))[0,1]
-        labels = labels.cpu().numpy()
-            
-        # Calculate metrics like in run_gc.py
-        mse = np.mean((predictions - labels) ** 2)
-        mae = np.mean(np.abs(predictions - labels))
-        correlation = np.corrcoef(predictions.flatten(), labels.flatten())[0,1]
-        
-        # Print detailed stats like in run_gc.py
-        print("\nDetailed Evaluation:")
-        print(f"MSE: {mse:.4f}")
-        print(f"MAE: {mae:.4f}")
-        print(f"Correlation: {correlation:.4f}")
-        
-        return {
-            'mse': mse,
-            'mae': mae,
-            'correlation': correlation
-        }
 
     def test_model(self, dataset, num_examples=10):
         """Test GC content prediction model with detailed analysis"""
@@ -302,12 +312,6 @@ class GcContentTrainer(BaseTrainer):
             'sequences': all_sequences
         }
 
-    @staticmethod
-    def get_default_args(output_dir: str) -> TrainingArguments:
-        args = BaseTrainer.get_default_args(output_dir)
-        args.label_names = ["gc_content"]  # Set specific label names for GC content
-        return args
-
 def test_gc_implementation(model, dataset, tokenizer, num_examples=10):
     """Standalone test function for GC content implementation"""
     model = model.eval()
@@ -340,7 +344,7 @@ def test_gc_implementation(model, dataset, tokenizer, num_examples=10):
     metrics = GcContentTrainer.get_test_metrics(None, all_predictions, all_labels)
     print("\nTest Results:")
     for metric, value in metrics.items():
-        print(f"{metric.upper()}: {value:.4f}")
+        print(f"{metric.UPPER()}: {value:.4f}")
     
     # Show sample predictions
     print("\nSample Predictions:")
