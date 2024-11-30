@@ -100,7 +100,7 @@ def main():
     # Run tests
     if test_method:
         print("\nRunning implementation-specific tests...")
-        test_method(model, dataset["test"], tokenizer)
+        test_method(model, tokenized_dataset["test"], tokenizer)
     elif hasattr(trainer, 'test_model'):
         print("\nRunning trainer's test method...")
         trainer.test_model(tokenized_dataset["test"])
