@@ -1,5 +1,5 @@
 import argparse
-from transformers import AutoTokenizer, AutoModel, DataCollatorWithPadding
+from transformers import AutoTokenizer, AutoModel, DataCollatorWithPadding, AutoConfig
 from dnaCLIP.core.base_classes import BaseDNAModel, BaseTrainer
 from dnaCLIP.core.registry import DNAModelRegistry
 from datasets import load_dataset
@@ -22,8 +22,21 @@ def create_model(implementation: str, model_name: str, dataset_name: str):
     # Get implementation components from registry
     head_class, generator_class, trainer_class, test_method = DNAModelRegistry.get_implementation(implementation)
     
-    # Initialize components
-    backbone = AutoModel.from_pretrained(model_name)
+    # Initialize components with proper config
+    config = AutoConfig.from_pretrained(
+        model_name,
+        trust_remote_code=True,
+        tie_word_embeddings=False,  # Add this to prevent weight sharing
+        layer_norm_eps=1e-7,
+        hidden_dropout_prob=0.1,
+        attention_probs_dropout_prob=0.1
+    )
+    
+    backbone = AutoModel.from_pretrained(
+        model_name,
+        config=config,
+        trust_remote_code=True,  # Add this to match run2.py
+    )
     tokenizer = AutoTokenizer.from_pretrained(model_name)
     head = head_class()
     data_generator = generator_class()
