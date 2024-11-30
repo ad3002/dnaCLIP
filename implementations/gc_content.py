@@ -4,6 +4,19 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch
 from transformers import DataCollatorWithPadding
+from dataclasses import dataclass
+from typing import Dict, List, Union
+
+@dataclass
+class GCDataCollator(DataCollatorWithPadding):
+    def __call__(self, features: List[Dict[str, Union[List[int], torch.Tensor]]]) -> Dict[str, torch.Tensor]:
+        batch = super().__call__(features)
+        
+        # Convert gc_content to tensor
+        if "gc_content" in features[0]:
+            batch["labels"] = torch.tensor([f["gc_content"] for f in features], dtype=torch.float32)
+            
+        return batch
 
 class GcContentDataGenerator(BaseDataGenerator):
     def __init__(self, max_length=128):
@@ -28,8 +41,8 @@ class GcContentDataGenerator(BaseDataGenerator):
             tokenized['gc_content'] = gc_content
             return tokenized
             
-        # Create data collator
-        self.data_collator = DataCollatorWithPadding(tokenizer=tokenizer, padding=True)
+        # Create custom data collator
+        self.data_collator = GCDataCollator(tokenizer=tokenizer)
         
         # Process each split
         processed_dataset = {}
@@ -61,12 +74,15 @@ class GcContentHead(BaseHead):
 
 class GcContentTrainer(BaseTrainer):
     def compute_loss(self, model, inputs, return_outputs=False, **kwargs):
-        gc_content = inputs.pop("gc_content")
+        labels = inputs.get('labels')  # Changed from gc_content to labels
+        if labels is None:
+            raise ValueError(f"No labels found in inputs. Keys: {inputs.keys()}")
+            
         outputs = model(
             input_ids=inputs["input_ids"],
             attention_mask=inputs["attention_mask"]
         )
-        loss = model.head.compute_loss(outputs, gc_content)
+        loss = model.head.compute_loss(outputs, labels)
         return (loss, outputs) if return_outputs else loss
 
     @staticmethod
