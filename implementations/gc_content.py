@@ -10,18 +10,14 @@ from typing import Dict, List, Union
 @dataclass
 class GCDataCollator(DataCollatorWithPadding):
     def __call__(self, features: List[Dict[str, Union[List[int], torch.Tensor]]]) -> Dict[str, torch.Tensor]:
-        print(f"Debug: First feature keys before collation: {features[0].keys()}")  # Debug info
+        # First handle special fields
+        gc_values = [f.pop("gc_content") for f in features]
+        
+        # Then do the normal collation
         batch = super().__call__(features)
         
-        # Convert gc_content to tensor more robustly
-        if any("gc_content" in f for f in features):
-            batch["labels"] = torch.tensor([
-                f.get("gc_content", 0.0) for f in features
-            ], dtype=torch.float32)
-        else:
-            print(f"Debug: Available keys in first feature: {features[0].keys()}")
-            raise ValueError("No gc_content found in features")
-            
+        # Add back the gc_content as labels
+        batch["labels"] = torch.tensor(gc_values, dtype=torch.float32)
         return batch
 
 class GcContentDataGenerator(BaseDataGenerator):
@@ -35,6 +31,7 @@ class GcContentDataGenerator(BaseDataGenerator):
     
     def prepare_dataset(self, dataset, tokenizer):
         def preprocess_function(examples):
+            # First tokenize
             tokenized = tokenizer(
                 examples["sequence"],
                 truncation=True,
@@ -42,14 +39,18 @@ class GcContentDataGenerator(BaseDataGenerator):
                 padding='max_length',
                 return_tensors=None
             )
-            # Calculate GC content
-            gc_content = [self.generate_features(seq) for seq in examples["sequence"]]
             
-            # Ensure gc_content is added to tokenized output
-            tokenized['gc_content'] = gc_content
+            # Calculate and add GC content
+            tokenized['gc_content'] = [
+                self.generate_features(seq) for seq in examples["sequence"]
+            ]
             
-            print(f"Debug: Tokenized keys after preprocessing: {tokenized.keys()}")  # Debug info
-            return tokenized
+            # Convert to format that plays nice with datasets
+            return {
+                "input_ids": tokenized["input_ids"],
+                "attention_mask": tokenized["attention_mask"],
+                "gc_content": tokenized["gc_content"]
+            }
             
         # Create custom data collator
         self.data_collator = GCDataCollator(tokenizer=tokenizer)
@@ -60,10 +61,9 @@ class GcContentDataGenerator(BaseDataGenerator):
             processed_dataset[split] = dataset[split].map(
                 preprocess_function,
                 batched=True,
-                remove_columns=dataset[split].column_names  # Remove all original columns
+                remove_columns=dataset[split].column_names,
+                desc=f"Processing {split} split"
             )
-            # Verify processed dataset
-            print(f"Debug: {split} split features: {processed_dataset[split].features}")
             
         return processed_dataset
 
