@@ -42,7 +42,7 @@ class GcContentHead(BaseHead):
         return F.mse_loss(outputs.squeeze(), targets)
 
 class GcContentTrainer(BaseTrainer):
-    def compute_loss(self, model, inputs, return_outputs=False):
+    def compute_loss(self, model, inputs, return_outputs=False, **kwargs):
         labels = inputs.pop("labels")
         outputs = model(
             input_ids=inputs["input_ids"],

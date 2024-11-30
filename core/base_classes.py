@@ -41,7 +41,7 @@ class BaseTrainer(Trainer):
         super().__init__(*args, **kwargs)
     
     @abstractmethod
-    def compute_loss(self, model, inputs, return_outputs=False):
+    def compute_loss(self, model, inputs, return_outputs=False, **kwargs):
         """Custom loss computation"""
         pass
     
