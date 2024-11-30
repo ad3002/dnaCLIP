@@ -144,6 +144,12 @@ class GcContentTrainer(BaseTrainer):
             'correlation': correlation.item()
         }
 
+    @staticmethod
+    def get_default_args(output_dir: str) -> TrainingArguments:
+        args = BaseTrainer.get_default_args(output_dir)
+        args.label_names = ["gc_content"]  # Set specific label names for GC content
+        return args
+
 # Register implementation
 DNAModelRegistry.register(
     "gc_content",
