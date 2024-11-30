@@ -37,8 +37,18 @@ class BaseDNAModel(PreTrainedModel):
         self.data_generator = data_generator
     
     def forward(self, input_ids, attention_mask=None, **kwargs):
-        outputs = self.backbone(input_ids, attention_mask=attention_mask)
-        sequence_features = outputs.last_hidden_state[:, 0, :]  # Use CLS token
+        outputs = self.backbone(
+            input_ids, 
+            attention_mask=attention_mask,
+            output_hidden_states=True,  # Request hidden states explicitly
+            return_dict=True
+        )
+        # Get the last hidden state - works for both output types
+        if hasattr(outputs, 'last_hidden_state'):
+            sequence_features = outputs.last_hidden_state[:, 0, :]
+        else:
+            # For models that return hidden_states differently
+            sequence_features = outputs.hidden_states[-1][:, 0, :]
         return self.head(sequence_features, **kwargs)
 
 class BaseTrainer(Trainer):
