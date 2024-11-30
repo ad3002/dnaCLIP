@@ -43,10 +43,20 @@ class GcContentHead(BaseHead):
 
 class GcContentTrainer(BaseTrainer):
     def compute_loss(self, model, inputs, return_outputs=False, **kwargs):
-        labels = inputs.pop("labels")
+        # Handle labels that might be in inputs or inputs.data
+        if hasattr(inputs, 'data'):
+            labels = inputs.data.get('labels')
+            input_data = inputs.data
+        else:
+            labels = inputs.get('labels')
+            input_data = inputs
+            
+        if labels is None:
+            raise ValueError("No labels found in inputs")
+            
         outputs = model(
-            input_ids=inputs["input_ids"],
-            attention_mask=inputs["attention_mask"]
+            input_ids=input_data["input_ids"],
+            attention_mask=input_data["attention_mask"]
         )
         loss = model.head.compute_loss(outputs, labels)
         return (loss, outputs) if return_outputs else loss

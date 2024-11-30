@@ -58,7 +58,7 @@ class BaseTrainer(Trainer):
             per_device_train_batch_size=32,
             per_device_eval_batch_size=32,
             num_train_epochs=10,
-            evaluation_strategy="epoch",
+            eval_strategy="epoch",
             save_strategy="epoch",
             logging_strategy="epoch",
             load_best_model_at_end=True,
