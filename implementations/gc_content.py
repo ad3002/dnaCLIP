@@ -87,34 +87,41 @@ class GcContentHead(BaseHead):
 
 class GcContentTrainer(BaseTrainer):
     def __init__(self, *args, **kwargs):
-        if 'data_collator' not in kwargs and 'model' in kwargs:
-            kwargs['data_collator'] = kwargs['model'].data_generator.data_collator
+        training_args = kwargs.get('args', None)
+        if training_args:
+            # Ensure label_names is set
+            training_args.label_names = ["gc_content"]
         super().__init__(*args, **kwargs)
-    
+
+    def _prepare_inputs(self, inputs):
+        """Prepare inputs before compute_loss is called"""
+        prepared = super()._prepare_inputs(inputs)
+        if isinstance(inputs, dict) and "gc_content" in inputs:
+            prepared["labels"] = inputs["gc_content"]
+        return prepared
+
     def compute_loss(self, model, inputs, return_outputs=False, **kwargs):
-        try:
-            # Convert inputs to dict if it's not already
-            if not isinstance(inputs, dict):
-                inputs = inputs.data
-                
-            # Get labels, trying different possible keys
-            if "labels" in inputs:
-                labels = inputs["labels"]
-            elif "gc_content" in inputs:
-                labels = inputs["gc_content"]
-            else:
-                raise KeyError("No labels found in inputs")
-                
-            outputs = model(
-                input_ids=inputs["input_ids"],
-                attention_mask=inputs["attention_mask"]
-            )
-            loss = model.head.compute_loss(outputs, labels)
-            return (loss, outputs) if return_outputs else loss
+        # Convert inputs to dict if it's not already
+        if not isinstance(inputs, dict):
+            inputs = {k: v for k, v in inputs.items()}
             
-        except Exception as e:
-            print(f"Input keys available: {inputs.keys()}")
-            raise e
+        # Get the labels
+        labels = inputs.get("labels", None)
+        if labels is None:
+            labels = inputs.get("gc_content", None)
+        if labels is None:
+            raise KeyError(f"No labels found in inputs. Available keys: {inputs.keys()}")
+            
+        # Get model outputs
+        outputs = model(
+            input_ids=inputs["input_ids"],
+            attention_mask=inputs["attention_mask"]
+        )
+        
+        # Compute loss
+        loss = model.head.compute_loss(outputs, labels)
+        
+        return (loss, outputs) if return_outputs else loss
 
     def prediction_step(self, model, inputs, prediction_loss_only, ignore_keys=None):
         """Custom prediction step to ensure consistent shapes"""
