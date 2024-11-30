@@ -18,7 +18,7 @@ class GCDataCollator(DataCollatorWithPadding):
         batch = super().__call__(features)
         
         # Add labels if gc_values were collected
-        if gc_values:
+        if (gc_values):
             batch["labels"] = torch.tensor(gc_values, dtype=torch.float32)
         
         return batch
@@ -48,8 +48,9 @@ class GcContentDataGenerator(BaseDataGenerator):
                 self.generate_features(seq) for seq in examples["sequence"]
             ]
             
-            # Include gc_content in the tokenized output
+            # Include gc_content and original sequence in the tokenized output
             tokenized["gc_content"] = gc_contents
+            tokenized["original_sequence"] = examples["sequence"]  # Preserve original sequences
             
             return tokenized
                 
@@ -330,23 +331,24 @@ def test_gc_implementation(model, test_dataset, tokenizer, num_examples=10):
     for i in range(0, len(test_dataset), batch_size):
         batch = test_dataset[i:i+batch_size]
         
-        # Handle both dictionary and dataset-like objects
-        sequences = batch['sequence'] if isinstance(batch, dict) else [item['sequence'] for item in batch]
+        # Create inputs directly from tokenized data
+        inputs = {
+            'input_ids': batch['input_ids'],
+            'attention_mask': batch['attention_mask']
+        }
         
-        inputs = tokenizer(
-            sequences,
-            return_tensors='pt',
-            padding=True,
-            truncation=True,
-            max_length=128
-        )
+        # Move inputs to tensor if needed
+        if not isinstance(inputs['input_ids'], torch.Tensor):
+            inputs = {k: torch.tensor(v) for k, v in inputs.items()}
         
         with torch.no_grad():
             predictions = model(**inputs).cpu().numpy().squeeze()
         
-        # Calculate actual GC content
-        labels = [sum(1 for base in seq.upper() if base in ['G', 'C'])/len(seq) 
-                 for seq in sequences]
+        # Get labels directly from dataset
+        labels = batch['gc_content']
+        sequences = batch.get('original_sequence', 
+                            [tokenizer.decode(seq, skip_special_tokens=True) 
+                             for seq in batch['input_ids']])
         
         all_predictions.extend(predictions if isinstance(predictions, list) else predictions.tolist())
         all_labels.extend(labels)
