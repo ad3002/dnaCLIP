@@ -28,11 +28,15 @@ class GcContentDataGenerator(BaseDataGenerator):
             )
             return tokenized
             
-        return dataset.map(
-            preprocess_function,
-            batched=True,
-            remove_columns=dataset.column_names
-        )
+        # Process each split separately
+        processed_dataset = {}
+        for split in dataset.keys():
+            processed_dataset[split] = dataset[split].map(
+                preprocess_function,
+                batched=True,
+                remove_columns=['Unnamed: 0', 'sequence', 'promoter_presence']
+            )
+        return processed_dataset
 
 class GcContentHead(BaseHead):
     def __init__(self, input_dim=768):
