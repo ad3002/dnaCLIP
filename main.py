@@ -4,10 +4,8 @@ from dnaCLIP.core.base_classes import BaseDNAModel, BaseTrainer
 from dnaCLIP.core.registry import DNAModelRegistry
 from datasets import load_dataset
 
-# Import implementations to trigger registration
 import dnaCLIP.implementations.promoter_prediction
 import dnaCLIP.implementations.gc_content
-import dnaCLIP.implementations.splice_sites
 
 def list_implementations():
     implementations = DNAModelRegistry.list_implementations()

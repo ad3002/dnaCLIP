@@ -1,16 +1,15 @@
-from ..core.base_classes import BaseDataGenerator, BaseHead, BaseTrainer
-from ..core.registry import register_dna_model
+from dnaCLIP.core.base_classes import BaseDataGenerator, BaseHead, BaseTrainer
+from dnaCLIP.core.registry import DNAModelRegistry
 import torch.nn as nn
 import torch.nn.functional as F
 import torch
 
-class GCContentDataGenerator(BaseDataGenerator):
+class GcContentDataGenerator(BaseDataGenerator):
     def __init__(self, max_length=128):
         self.max_length = max_length
     
     def generate_features(self, sequence):
-        gc_count = sum(1 for base in sequence if base in 'GC')
-        return gc_count / len(sequence)
+        return None
     
     def prepare_dataset(self, dataset, tokenizer):
         def preprocess_function(examples):
@@ -21,22 +20,16 @@ class GCContentDataGenerator(BaseDataGenerator):
                 padding="max_length",
                 return_tensors=None
             )
-            tokenized['gc_content'] = [
-                self.generate_features(seq) for seq in examples["sequence"]
-            ]
+            tokenized['labels'] = examples['gc_content']
             return tokenized
+            
         return dataset.map(preprocess_function, batched=True)
 
-@register_dna_model("gc_content")
-class GCContentHead(BaseHead):
+class GcContentHead(BaseHead):
     def __init__(self, input_dim=768):
         super().__init__()
         self.regressor = nn.Sequential(
-            nn.Linear(input_dim, 256),
-            nn.GELU(),
-            nn.LayerNorm(256),
-            nn.Dropout(0.1),
-            nn.Linear(256, 1),
+            nn.Linear(input_dim, 1),
             nn.Sigmoid()
         )
     
@@ -44,43 +37,28 @@ class GCContentHead(BaseHead):
         return self.regressor(sequence_features)
     
     def compute_loss(self, outputs, targets):
-        return F.mse_loss(outputs.squeeze(), targets.float())
+        return F.mse_loss(outputs.squeeze(), targets)
 
-class GCContentTrainer(BaseTrainer):
+class GcContentTrainer(BaseTrainer):
     def compute_loss(self, model, inputs, return_outputs=False):
-        gc_content = inputs.pop("gc_content")
+        labels = inputs.pop("labels")
         outputs = model(
             input_ids=inputs["input_ids"],
             attention_mask=inputs["attention_mask"]
         )
-        
-        loss = model.head.compute_loss(outputs, gc_content)
+        loss = model.head.compute_loss(outputs, labels)
         return (loss, outputs) if return_outputs else loss
 
     @staticmethod
     def compute_metrics(eval_pred):
         predictions, labels = eval_pred
-        predictions = predictions.squeeze()
-        mse = F.mse_loss(predictions, labels)
-        return {
-            'mse': mse.item(),
-            'correlation': torch.corrcoef(torch.stack([predictions, labels]))[0,1].item()
-        }
-    
-    def evaluate(self, model, eval_dataset):
-        model.eval()
-        total_mse = 0
-        n_samples = 0
-        
-        with torch.no_grad():
-            for batch in eval_dataset:
-                batch = {k: v.to(self.device) for k, v in batch.items()}
-                outputs = model(
-                    input_ids=batch['input_ids'],
-                    attention_mask=batch['attention_mask']
-                )
-                mse = F.mse_loss(outputs.squeeze(), batch['gc_content'].float())
-                total_mse += mse.item() * len(batch['gc_content'])
-                n_samples += len(batch['gc_content'])
-        
-        return {'mse': total_mse / n_samples}
+        mse = F.mse_loss(torch.tensor(predictions), torch.tensor(labels))
+        return {'mse': mse.item()}
+
+# Register implementation
+DNAModelRegistry.register(
+    "gc_content",
+    GcContentHead,
+    GcContentDataGenerator,
+    GcContentTrainer
+)
