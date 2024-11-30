@@ -8,7 +8,6 @@ dnaCLIP is a flexible framework that allows implementation of various DNA sequen
 
 - Promoter prediction
 - GC content prediction
-- Splice site analysis
 
 ## Installation
 
@@ -42,7 +41,6 @@ Train a model:
 ```bash
 python main.py --implementation promoter
 python main.py --implementation gc_content
-python main.py --implementation splice_sites
 ```
 
 Custom dataset and model:
