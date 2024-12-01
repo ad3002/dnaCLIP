@@ -349,8 +349,12 @@ def test_gc_implementation(model, test_dataset, tokenizer, num_examples=10):
             'attention_mask': padded_batch['attention_mask']
         }
         
+        # Move inputs to the same device as the model
+        device = next(model.parameters()).device
+        inputs = {k: v.to(device) for k, v in inputs.items() if isinstance(v, torch.Tensor)}
+        
         with torch.no_grad():
-            predictions = model(**inputs).numpy().squeeze()
+            predictions = model(**inputs).cpu().numpy().squeeze()
         
         # Get labels directly from dataset
         labels = batch['gc_content']
