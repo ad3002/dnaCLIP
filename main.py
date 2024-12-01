@@ -72,7 +72,7 @@ def list_implementations():
         print(f"  Trainer: {components['trainer']}")
     print("\n")
 
-def create_model(implementation: str, model_name: str, dataset_name: str, num_epochs: int = 10):
+def create_model(implementation: str, model_name: str, dataset_name: str, num_epochs: int = 10, frozen: bool = False):
     # Get implementation components from registry
     head_class, generator_class, trainer_class, test_method = DNAModelRegistry.get_implementation(implementation)
     
@@ -95,12 +95,17 @@ def create_model(implementation: str, model_name: str, dataset_name: str, num_ep
         trust_remote_code=True,  # Add this to match run2.py
     ).to(device)
     
+    # Freeze backbone if requested
+    if frozen:
+        for param in backbone.parameters():
+            param.requires_grad = False
+    
     tokenizer = AutoTokenizer.from_pretrained(model_name)
     head = head_class().to(device)
     data_generator = generator_class()
     
     # Create model and move to device
-    model = BaseDNAModel(backbone, head, data_generator).to(device)
+    model = BaseDNAModel(backbone, head, data_generator, frozen=frozen).to(device)
     
     # Prepare dataset
     dataset = load_dataset(dataset_name)['train'].train_test_split(test_size=0.1)
@@ -134,6 +139,8 @@ def main():
                        help='Dataset name')
     parser.add_argument('-e', '--epochs', type=int, default=10,
                        help='Number of training epochs')
+    parser.add_argument('--frozen', action='store_true',
+                       help='Freeze BERT backbone weights during training')
     args = parser.parse_args()
     
     if args.list:
@@ -154,7 +161,8 @@ def main():
         args.implementation, 
         args.model,
         args.dataset,
-        args.epochs
+        args.epochs,
+        args.frozen
     )
     
     # Train model

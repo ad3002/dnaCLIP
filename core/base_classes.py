@@ -29,27 +29,44 @@ class BaseHead(nn.Module, ABC):
         """Test method for head-specific testing logic"""
         pass
 
-class BaseDNAModel(PreTrainedModel):
-    def __init__(self, backbone, head, data_generator):
-        super().__init__(backbone.config)
+class BaseDNAModel(nn.Module):
+    def __init__(self, backbone, head, data_generator, frozen=False):
+        super().__init__()
         self.backbone = backbone
         self.head = head
         self.data_generator = data_generator
+        self.frozen = frozen
+        
+        # Set backbone to frozen state if requested
+        if self.frozen:
+            for param in self.backbone.parameters():
+                param.requires_grad = False
     
-    def forward(self, input_ids, attention_mask=None, **kwargs):
-        outputs = self.backbone(
-            input_ids, 
-            attention_mask=attention_mask,
-            output_hidden_states=True,  # Request hidden states explicitly
-            return_dict=True
-        )
-        # Get the last hidden state - works for both output types
-        if hasattr(outputs, 'last_hidden_state'):
-            sequence_features = outputs.last_hidden_state[:, 0, :]
+    def forward(self, input_ids, attention_mask=None):
+        # Use no_grad for backbone if frozen
+        if self.frozen:
+            with torch.no_grad():
+                sequence_output = self.backbone(input_ids, attention_mask=attention_mask).last_hidden_state
         else:
-            # For models that return hidden_states differently
-            sequence_features = outputs.hidden_states[-1][:, 0, :]
-        return self.head(sequence_features, **kwargs)
+            sequence_output = self.backbone(input_ids, attention_mask=attention_mask).last_hidden_state
+        
+        # Extract CLS token representation
+        sequence_features = sequence_output[:, 0, :]
+        
+        # Pass through head
+        return self.head(sequence_features)
+    
+    def unfreeze(self):
+        """Unfreeze the backbone parameters"""
+        self.frozen = False
+        for param in self.backbone.parameters():
+            param.requires_grad = True
+    
+    def freeze(self):
+        """Freeze the backbone parameters"""
+        self.frozen = True
+        for param in self.backbone.parameters():
+            param.requires_grad = False
 
 class BaseTrainer(Trainer):
     def __init__(self, *args, **kwargs):
