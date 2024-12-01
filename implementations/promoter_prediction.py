@@ -189,10 +189,13 @@ class PromoterTrainer(BaseTrainer):
     @staticmethod
     def compute_metrics(eval_pred):
         predictions, labels = eval_pred
-        predictions = predictions.argmax(dim=1)
         
+        # Handle both torch.Tensor and numpy.ndarray
         if isinstance(predictions, torch.Tensor):
-            predictions = predictions.numpy()
+            predictions = predictions.argmax(dim=1).numpy()
+        else:
+            predictions = predictions.argmax(axis=1)
+            
         if isinstance(labels, torch.Tensor):
             labels = labels.numpy()
             
@@ -214,75 +217,82 @@ class PromoterTrainer(BaseTrainer):
             'f1': f1
         }
 
-def test_promoter_implementation(model, dataset, tokenizer, num_examples=10):
+def test_promoter_implementation(model, test_dataset, tokenizer, num_examples=10):
     """Standalone test function for promoter prediction implementation"""
+    if test_dataset is None or len(test_dataset) == 0:
+        raise ValueError("Test dataset is empty or None")
+
     model = model.eval()
     all_predictions = []
     all_labels = []
     all_sequences = []
-    
-    for i in range(0, len(dataset), 32):  # Using default batch size of 32
-        batch = dataset[i:i+32]
-        inputs = tokenizer(
-            batch['sequence'],
-            return_tensors='pt',
-            padding=True,
-            truncation=True,
-            max_length=128
-        )
+    batch_size = 32
+
+    # Ensure test_dataset has the required format
+    if not hasattr(test_dataset, '__len__'):
+        raise ValueError("Test dataset must be a sequence-like object")
+
+    # Create data collator for padding
+    data_collator = DataCollatorWithPadding(tokenizer)
+
+    for i in range(0, len(test_dataset), batch_size):
+        batch = test_dataset[i:i+batch_size]
+        
+        # Extract features from batch
+        features = [{
+            'input_ids': batch['input_ids'][j],
+            'attention_mask': batch['attention_mask'][j],
+            'labels': batch['labels'][j] if 'labels' in batch else batch['promoter_presence'][j]
+        } for j in range(len(batch['input_ids']))]
+        
+        # Use data collator to pad the batch
+        padded_batch = data_collator(features)
+        
+        # Ensure tensors are on the correct device
+        device = next(model.parameters()).device
+        inputs = {
+            'input_ids': padded_batch['input_ids'].to(device),
+            'attention_mask': padded_batch['attention_mask'].to(device)
+        }
         
         with torch.no_grad():
-            outputs = model(**inputs)
+            outputs = model(**inputs).cpu()
             predictions = outputs.argmax(dim=1).numpy()
         
-        labels = batch['promoter_presence']
+        labels = [f['labels'] for f in features]
+        sequences = batch.get('original_sequence', 
+                            [tokenizer.decode(seq, skip_special_tokens=True) 
+                             for seq in batch['input_ids']])
         
         all_predictions.extend(predictions)
         all_labels.extend(labels)
-        all_sequences.extend(batch['sequence'])
-    
-    # Calculate metrics
+        all_sequences.extend(sequences)
+
+    # Convert to numpy arrays
     all_predictions = np.array(all_predictions)
     all_labels = np.array(all_labels)
     
-    # Calculate basic metrics
-    accuracy = (all_predictions == all_labels).mean()
-    true_pos = ((all_predictions == 1) & (all_labels == 1)).sum()
-    false_pos = ((all_predictions == 1) & (all_labels == 0)).sum()
-    false_neg = ((all_predictions == 0) & (all_labels == 1)).sum()
-    
-    precision = true_pos / (true_pos + false_pos) if (true_pos + false_pos) > 0 else 0
-    recall = true_pos / (true_pos + false_neg) if (true_pos + false_neg) > 0 else 0
-    f1 = 2 * (precision * recall) / (precision + recall) if (precision + recall) > 0 else 0
+    # Calculate metrics using the trainer's static method
+    metrics = PromoterTrainer.compute_metrics((all_predictions, all_labels))
     
     # Print results
     print("\nTest Results:")
-    print(f"ACCURACY: {accuracy:.4f}")
-    print(f"PRECISION: {precision:.4f}")
-    print(f"RECALL: {recall:.4f}")
-    print(f"F1: {f1:.4f}")
+    for metric, value in metrics.items():
+        print(f"{metric.upper()}: {value:.4f}")
     
     if num_examples > 0:
         print("\nSample Predictions:")
         print("Sequence\t\tPredicted\tActual")
         print("-" * 70)
         
-        indices = np.random.choice(len(all_predictions), num_examples, replace=False)
+        indices = np.random.choice(len(all_predictions), min(num_examples, len(all_predictions)), replace=False)
         for idx in indices:
             seq = all_sequences[idx][:20]
             pred = all_predictions[idx]
             actual = all_labels[idx]
             print(f"{seq}...\t{pred}\t\t{actual}")
     
-    return {
-        'accuracy': accuracy,
-        'precision': precision,
-        'recall': recall,
-        'f1': f1,
-        'predictions': all_predictions,
-        'labels': all_labels,
-        'sequences': all_sequences
-    }
+    return metrics
 
 # Register implementation with test function
 DNAModelRegistry.register(
