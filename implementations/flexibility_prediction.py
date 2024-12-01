@@ -11,19 +11,38 @@ from typing import Dict, List, Union
 @dataclass
 class FlexibilityDataCollator(DataCollatorWithPadding):
     def __call__(self, features: List[Dict[str, Union[List[int], torch.Tensor]]]) -> Dict[str, torch.Tensor]:
+        # Extract flexibility values and original sequences
         flex_values = []
-        for f in features:
-            if "flexibility" in f:
-                # Make sure we handle both list and tensor inputs
-                if isinstance(f["flexibility"], torch.Tensor):
-                    flex_values.append(f["flexibility"])
-                else:
-                    flex_values.append(torch.tensor(f["flexibility"]))
+        original_sequences = []
         
-        batch = super().__call__(features)
+        # Create a new features list without original_sequence
+        filtered_features = []
+        
+        for f in features:
+            feature_copy = dict(f)
+            
+            # Handle flexibility values
+            if "flexibility" in feature_copy:
+                if isinstance(feature_copy["flexibility"], torch.Tensor):
+                    flex_values.append(feature_copy["flexibility"])
+                else:
+                    flex_values.append(torch.tensor(feature_copy["flexibility"]))
+            
+            # Store original sequence separately
+            if "original_sequence" in feature_copy:
+                original_sequences.append(feature_copy.pop("original_sequence"))
+                
+            filtered_features.append(feature_copy)
+        
+        # Process the batch without original_sequence
+        batch = super().__call__(filtered_features)
+        
+        # Add back processed tensors
         if flex_values:
-            # Stack tensors properly to ensure consistent shape
             batch["labels"] = torch.stack(flex_values)
+        if original_sequences:
+            batch["original_sequence"] = original_sequences
+            
         return batch
 
 class FlexibilityDataGenerator(BaseDataGenerator):
