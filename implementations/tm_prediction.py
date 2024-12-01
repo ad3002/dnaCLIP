@@ -22,6 +22,10 @@ class TmDataGenerator(BaseDataGenerator):
     def __init__(self, max_length=128):
         self.max_length = max_length
         self.data_collator = None
+    
+    def generate_features(self, sequence):
+        """Implementation of abstract method to generate features"""
+        return self.calculate_tm(sequence)
         
     def calculate_tm(self, sequence):
         """Calculate melting temperature using simplified nearest-neighbor method"""
