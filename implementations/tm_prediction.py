@@ -22,22 +22,69 @@ class TmDataGenerator(BaseDataGenerator):
     def __init__(self, max_length=128):
         self.max_length = max_length
         self.data_collator = None
-    
-    def generate_features(self, sequence):
-        """Implementation of abstract method to generate features"""
-        return self.calculate_tm(sequence)
+        
+        # Nearest-neighbor parameters (SantaLucia & Hicks, 2004)
+        self.nn_params = {
+            'AA/TT': (-7.9, -22.2),
+            'AT/TA': (-7.2, -20.4),
+            'TA/AT': (-7.2, -21.3),
+            'CA/GT': (-8.5, -22.7),
+            'GT/CA': (-8.4, -22.4),
+            'CT/GA': (-7.8, -21.0),
+            'GA/CT': (-8.2, -22.2),
+            'CG/GC': (-10.6, -27.2),
+            'GC/CG': (-9.8, -24.4),
+            'GG/CC': (-8.0, -19.9),
+        }
+        
+        # Salt concentration (mM) and other parameters
+        self.Na = 50  # mM Na+
+        self.R = 1.987  # Gas constant in cal/K·mol
         
     def calculate_tm(self, sequence):
-        """Calculate melting temperature using simplified nearest-neighbor method"""
+        """Calculate melting temperature using nearest-neighbor method"""
         sequence = sequence.upper()
-        gc_count = sequence.count('G') + sequence.count('C')
-        at_count = sequence.count('A') + sequence.count('T')
+        if len(sequence) < 2:
+            return 0.0
+            
+        # Initialize thermodynamic parameters
+        dH = 0  # Enthalpy
+        dS = 0  # Entropy
         
-        # Simple formula: Tm = 2°C * (AT pairs) + 4°C * (GC pairs)
-        tm = 2 * at_count + 4 * gc_count
+        # Calculate nearest-neighbor contributions
+        for i in range(len(sequence) - 1):
+            pair = sequence[i:i+2]
+            complement = ''.join(['T' if b == 'A' else 'A' if b == 'T' else 'G' if b == 'C' else 'C' for b in pair[::-1]])
+            key = f"{pair}/{complement}"
+            
+            # Use the parameters if available, otherwise use average values
+            if key in self.nn_params:
+                h, s = self.nn_params[key]
+                dH += h
+                dS += s
+            else:
+                # Average values for non-standard pairs
+                dH += -8.0
+                dS += -22.0
         
-        # Normalize to a reasonable range (0-1)
-        return min(1.0, tm / 200.0)  # Assuming max Tm around 200°C
+        # Terminal AT penalty
+        if sequence[0] in 'AT':
+            dH += 2.3
+            dS += 4.1
+        if sequence[-1] in 'AT':
+            dH += 2.3
+            dS += 4.1
+        
+        # Salt correction
+        salt_correction = 0.368 * (len(sequence) - 1) * np.log(self.Na/1000)
+        dS += salt_correction
+        
+        # Calculate Tm
+        tm = (1000 * dH) / (dS + self.R * np.log(1/4)) - 273.15
+        
+        # Normalize to [0,1] range, assuming Tm typically falls between 0°C and 120°C
+        normalized_tm = (tm - 0) / (120 - 0)
+        return max(0.0, min(1.0, normalized_tm))
     
     def prepare_dataset(self, dataset, tokenizer):
         def preprocess_function(examples):
