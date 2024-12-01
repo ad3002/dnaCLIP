@@ -328,18 +328,26 @@ def test_gc_implementation(model, test_dataset, tokenizer, num_examples=10):
     if not hasattr(test_dataset, '__len__'):
         raise ValueError("Test dataset must be a sequence-like object")
 
+    # Create data collator for padding
+    data_collator = DataCollatorWithPadding(tokenizer)
+
     for i in range(0, len(test_dataset), batch_size):
         batch = test_dataset[i:i+batch_size]
         
-        # Create inputs directly from tokenized data
-        inputs = {
-            'input_ids': batch['input_ids'],
-            'attention_mask': batch['attention_mask']
-        }
+        # Extract features from batch
+        features = [{
+            'input_ids': batch['input_ids'][j],
+            'attention_mask': batch['attention_mask'][j]
+        } for j in range(len(batch['input_ids']))]
         
-        # Move inputs to tensor if needed
-        if not isinstance(inputs['input_ids'], torch.Tensor):
-            inputs = {k: torch.tensor(v) for k, v in inputs.items()}
+        # Use data collator to pad the batch
+        padded_batch = data_collator(features)
+        
+        # Ensure tensors are on the correct device
+        inputs = {
+            'input_ids': padded_batch['input_ids'],
+            'attention_mask': padded_batch['attention_mask']
+        }
         
         with torch.no_grad():
             predictions = model(**inputs).cpu().numpy().squeeze()
