@@ -1,4 +1,3 @@
-
 from dnaCLIP.core.base_classes import BaseDataGenerator, BaseHead, BaseTrainer
 from dnaCLIP.core.registry import DNAModelRegistry
 import torch.nn as nn
@@ -33,6 +32,7 @@ class BendabilityDataCollator(DataCollatorWithPadding):
 
 class BendabilityDataGenerator(BaseDataGenerator):
     def __init__(self, max_length=128):
+        super().__init__()  # Add parent class initialization
         self.max_length = max_length
         self.data_collator = None
         
@@ -106,6 +106,12 @@ class BendabilityDataGenerator(BaseDataGenerator):
         
         return processed_dataset
 
+    def generate_features(self, sequence):
+        """Required abstract method implementation"""
+        if not sequence:
+            return [0.0]
+        return [self.calculate_bendability(sequence)]
+
 class BendabilityHead(BaseHead):
     def __init__(self, input_dim=768):
         super().__init__()
@@ -123,6 +129,11 @@ class BendabilityHead(BaseHead):
     
     def compute_loss(self, outputs, targets):
         return F.mse_loss(outputs, targets.float())
+    
+    def test(self, sequence_features, **kwargs):
+        """Required abstract method implementation"""
+        with torch.no_grad():
+            return self.forward(sequence_features, **kwargs)
 
 class BendabilityTrainer(BaseTrainer):
     def __init__(self, *args, **kwargs):
@@ -214,6 +225,10 @@ class BendabilityTrainer(BaseTrainer):
             'labels': all_labels,
             'sequences': all_sequences
         }
+
+    def get_test_metrics(self, predictions, labels):
+        """Required abstract method implementation"""
+        return self.compute_metrics((predictions, labels))
 
 def test_bendability_implementation(model, test_dataset, tokenizer, num_examples=10):
     """Standalone test function for bendability prediction"""
