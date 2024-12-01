@@ -106,9 +106,9 @@ def train_gc_model(model, tokenized_dataset, data_collator):
         predictions = predictions.squeeze()
         # Convert to numpy if needed
         if isinstance(predictions, torch.Tensor):
-            predictions = predictions.cpu().numpy()
+            predictions = predictions.numpy()
         if isinstance(labels, torch.Tensor):
-            labels = labels.cpu().numpy()
+            labels = labels.numpy()
             
         mse = np.mean((predictions - labels) ** 2)
         correlation = np.corrcoef(predictions.flatten(), labels.flatten())[0,1]
@@ -174,7 +174,7 @@ def test_gc_model(dataset, model, tokenizer, num_examples=10):
             model = model.cuda()
         
         with torch.no_grad():
-            predictions = model(**model_inputs).cpu().numpy().squeeze()
+            predictions = model(**model_inputs).numpy().squeeze()
         
         # Get actual GC content
         labels = [calculate_gc_content(seq) for seq in batch['sequence']]

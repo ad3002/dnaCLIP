@@ -123,9 +123,9 @@ class GcContentTrainer(BaseTrainer):
         
         # Convert to numpy if needed
         if isinstance(predictions, torch.Tensor):
-            predictions = predictions.cpu().numpy()
+            predictions = predictions.numpy()
         if isinstance(labels, torch.Tensor):
-            labels = labels.cpu().numpy()
+            labels = labels.numpy()
             
         # Calculate metrics
         mse = np.mean((predictions - labels) ** 2)
@@ -199,7 +199,7 @@ class GcContentTrainer(BaseTrainer):
             })
             
             with torch.no_grad():
-                predictions = model(**inputs).cpu().numpy().squeeze()
+                predictions = model(**inputs).numpy().squeeze()
             
             # Get actual GC content
             labels = batch['gc_content']
@@ -273,7 +273,7 @@ class GcContentTrainer(BaseTrainer):
             inputs = self._prepare_inputs(batch)
             
             with torch.no_grad():
-                predictions = model(**inputs).cpu().numpy()
+                predictions = model(**inputs).numpy()
             
             labels = batch['gc_content']
             sequences = [
@@ -350,7 +350,7 @@ def test_gc_implementation(model, test_dataset, tokenizer, num_examples=10):
         }
         
         with torch.no_grad():
-            predictions = model(**inputs).cpu().numpy().squeeze()
+            predictions = model(**inputs).numpy().squeeze()
         
         # Get labels directly from dataset
         labels = batch['gc_content']

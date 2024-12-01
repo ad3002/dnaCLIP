@@ -119,9 +119,9 @@ class PromoterTrainer(BaseTrainer):
         predictions = predictions.argmax(dim=1)
         
         if isinstance(predictions, torch.Tensor):
-            predictions = predictions.cpu().numpy()
+            predictions = predictions.numpy()
         if isinstance(labels, torch.Tensor):
-            labels = labels.cpu().numpy()
+            labels = labels.numpy()
             
         accuracy = (predictions == labels).mean()
         
@@ -160,7 +160,7 @@ def test_promoter_implementation(model, dataset, tokenizer, num_examples=10):
         
         with torch.no_grad():
             outputs = model(**inputs)
-            predictions = outputs.argmax(dim=1).cpu().numpy()
+            predictions = outputs.argmax(dim=1).numpy()
         
         labels = batch['promoter_presence']
         
