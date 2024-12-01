@@ -5,7 +5,7 @@ import torch.nn.functional as F
 import torch
 import numpy as np
 from transformers import TrainingArguments
-from typing import Dict, List, Union
+from typing import Dict, List, Union, Optional, Tuple
 
 class PromoterDataGenerator(BaseDataGenerator):
     def __init__(self, max_length=128):
@@ -46,6 +46,56 @@ class PromoterHead(BaseHead):
     
     def compute_loss(self, outputs, targets):
         return F.cross_entropy(outputs, targets)
+
+    def test(
+        self,
+        outputs: torch.Tensor,
+        sequences: Optional[List[str]] = None,
+        labels: Optional[torch.Tensor] = None
+    ) -> Tuple[Dict[str, float], Optional[List[Dict[str, Union[str, float]]]]]:
+        """
+        Test method for promoter prediction.
+        Args:
+            outputs: Model outputs (logits)
+            sequences: Original sequences (optional)
+            labels: Ground truth labels (optional)
+        Returns:
+            Tuple of (metrics_dict, predictions_list)
+        """
+        predictions = outputs.argmax(dim=1)
+        metrics = {}
+        
+        if labels is not None:
+            accuracy = (predictions == labels).float().mean().item()
+            true_pos = ((predictions == 1) & (labels == 1)).sum().item()
+            false_pos = ((predictions == 1) & (labels == 0)).sum().item()
+            false_neg = ((predictions == 0) & (labels == 1)).sum().item()
+            
+            precision = true_pos / (true_pos + false_pos) if (true_pos + false_pos) > 0 else 0
+            recall = true_pos / (true_pos + false_neg) if (true_pos + false_neg) > 0 else 0
+            f1 = 2 * (precision * recall) / (precision + recall) if (precision + recall) > 0 else 0
+            
+            metrics = {
+                'accuracy': accuracy,
+                'precision': precision,
+                'recall': recall,
+                'f1': f1
+            }
+
+        # Create detailed predictions if sequences are provided
+        detailed_predictions = None
+        if sequences is not None:
+            detailed_predictions = []
+            for i, seq in enumerate(sequences):
+                pred_dict = {
+                    'sequence': seq,
+                    'prediction': predictions[i].item(),
+                }
+                if labels is not None:
+                    pred_dict['actual'] = labels[i].item()
+                detailed_predictions.append(pred_dict)
+
+        return metrics, detailed_predictions
 
 def compute_metrics(predictions, labels):
     predictions = predictions.argmax(dim=1)
