@@ -4,12 +4,29 @@ import torch.nn as nn
 import torch.nn.functional as F
 import torch
 import numpy as np
-from transformers import TrainingArguments
+from transformers import DataCollatorWithPadding, TrainingArguments
+from dataclasses import dataclass
 from typing import Dict, List, Union, Optional, Tuple
+
+@dataclass
+class PromoterDataCollator(DataCollatorWithPadding):
+    def __call__(self, features: List[Dict[str, Union[List[int], torch.Tensor]]]) -> Dict[str, torch.Tensor]:
+        # Collect promoter labels if available
+        labels = [f["labels"] for f in features if "labels" in f]
+        
+        # Proceed with default collation
+        batch = super().__call__(features)
+        
+        # Add labels if they were collected
+        if labels:
+            batch["labels"] = torch.tensor(labels, dtype=torch.long)
+        
+        return batch
 
 class PromoterDataGenerator(BaseDataGenerator):
     def __init__(self, max_length=128):
         self.max_length = max_length
+        self.data_collator = None
     
     def generate_features(self, sequence):
         # For promoter prediction, we don't need additional features
@@ -17,6 +34,9 @@ class PromoterDataGenerator(BaseDataGenerator):
         return None
     
     def prepare_dataset(self, dataset, tokenizer):
+        # Create custom data collator
+        self.data_collator = PromoterDataCollator(tokenizer=tokenizer)
+
         def preprocess_function(examples):
             # Tokenize sequences with fixed padding
             tokenized = tokenizer(
