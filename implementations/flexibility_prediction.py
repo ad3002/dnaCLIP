@@ -11,10 +11,19 @@ from typing import Dict, List, Union
 @dataclass
 class FlexibilityDataCollator(DataCollatorWithPadding):
     def __call__(self, features: List[Dict[str, Union[List[int], torch.Tensor]]]) -> Dict[str, torch.Tensor]:
-        flex_values = [f["flexibility"] for f in features if "flexibility" in f]
+        flex_values = []
+        for f in features:
+            if "flexibility" in f:
+                # Make sure we handle both list and tensor inputs
+                if isinstance(f["flexibility"], torch.Tensor):
+                    flex_values.append(f["flexibility"])
+                else:
+                    flex_values.append(torch.tensor(f["flexibility"]))
+        
         batch = super().__call__(features)
         if flex_values:
-            batch["labels"] = torch.tensor(flex_values, dtype=torch.float32)
+            # Stack tensors properly to ensure consistent shape
+            batch["labels"] = torch.stack(flex_values)
         return batch
 
 class FlexibilityDataGenerator(BaseDataGenerator):
@@ -164,10 +173,14 @@ class FlexibilityTrainer(BaseTrainer):
     def compute_metrics(eval_pred):
         predictions, labels = eval_pred
         
-        if isinstance(predictions, torch.Tensor):
-            predictions = predictions.numpy()
-        if isinstance(labels, torch.Tensor):
-            labels = labels.numpy()
+        # Ensure proper shapes
+        predictions = np.asarray(predictions)
+        labels = np.asarray(labels)
+        
+        if predictions.ndim == 1:
+            predictions = predictions.reshape(-1, 2)
+        if labels.ndim == 1:
+            labels = labels.reshape(-1, 2)
             
         # Calculate metrics for both propeller twist and bendability
         mse_prop = np.mean((predictions[:, 0] - labels[:, 0]) ** 2)
