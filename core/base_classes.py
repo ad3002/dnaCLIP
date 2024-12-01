@@ -46,23 +46,26 @@ class BaseDNAModel(nn.Module):
         # Use no_grad for backbone if frozen
         if self.frozen:
             with torch.no_grad():
-                backbone_output = self.backbone(input_ids, attention_mask=attention_mask)
+                backbone_output = self.backbone(input_ids, attention_mask=attention_mask, output_hidden_states=True)
         else:
-            backbone_output = self.backbone(input_ids, attention_mask=attention_mask)
+            backbone_output = self.backbone(input_ids, attention_mask=attention_mask, output_hidden_states=True)
         
         # Handle different types of model outputs
-        if hasattr(backbone_output, 'last_hidden_state'):
+        if hasattr(backbone_output, 'hidden_states'):
+            # Get last hidden state from hidden_states tuple
+            sequence_output = backbone_output.hidden_states[-1]
+        elif hasattr(backbone_output, 'last_hidden_state'):
             sequence_output = backbone_output.last_hidden_state
         elif isinstance(backbone_output, dict):
             sequence_output = backbone_output.get('last_hidden_state', 
                                                backbone_output.get('hidden_states', None))
         elif isinstance(backbone_output, tuple):
-            sequence_output = backbone_output[0]  # Usually first element is hidden states
+            sequence_output = backbone_output[0]
         elif isinstance(backbone_output, torch.Tensor):
             sequence_output = backbone_output
         else:
-            raise ValueError(f"Unexpected backbone output type: {type(backbone_output)}")
-            
+            raise ValueError(f"Unexpected backbone output type: {type(backbone_output)}\nOutput: {backbone_output}")
+        
         if sequence_output is None:
             raise ValueError(f"Could not extract sequence output from backbone model. Output: {backbone_output}")
         
