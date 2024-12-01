@@ -172,6 +172,9 @@ class FlexibilityTrainer(BaseTrainer):
         if training_args:
             training_args.label_names = ["flexibility"]
         
+        # Initialize tokenizer separately
+        self.tokenizer = kwargs.pop('tokenizer', None)
+        
         if 'compute_metrics' not in kwargs:
             kwargs['compute_metrics'] = self.compute_metrics
             
@@ -277,6 +280,10 @@ class FlexibilityTrainer(BaseTrainer):
         )
         
         device = next(model.parameters()).device
+        tokenizer = self.tokenizer or getattr(self.model, 'tokenizer', None)
+        
+        if not tokenizer:
+            raise ValueError("No tokenizer available. Please provide a tokenizer when initializing the trainer.")
         
         for batch in dataloader:
             # Move tensors to the correct device
@@ -291,7 +298,7 @@ class FlexibilityTrainer(BaseTrainer):
             
             labels = batch['labels'].cpu().numpy() if isinstance(batch['labels'], torch.Tensor) else batch['labels']
             sequences = [
-                self.tokenizer.decode(seq, skip_special_tokens=True) 
+                tokenizer.decode(seq, skip_special_tokens=True) 
                 for seq in batch['input_ids'].cpu().numpy()
             ]
             
@@ -337,7 +344,12 @@ class FlexibilityTrainer(BaseTrainer):
 
 def test_flexibility_implementation(model, test_dataset, tokenizer, num_examples=10):
     """Standalone test function for flexibility prediction"""
-    trainer = FlexibilityTrainer(model=model, args=None)
+    trainer = FlexibilityTrainer(
+        model=model,
+        args=None,
+        tokenizer=tokenizer  # Pass tokenizer explicitly
+    )
+    trainer.data_collator = FlexibilityDataCollator(tokenizer=tokenizer)
     return trainer.test_model(test_dataset, num_examples)
 
 # Update registration to use the proper trainer and test implementation
