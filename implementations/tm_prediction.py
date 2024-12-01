@@ -84,6 +84,11 @@ class TmHead(BaseHead):
     
     def compute_loss(self, outputs, targets):
         return F.mse_loss(outputs.squeeze(), targets.float())
+    
+    def test(self, sequence_features, **kwargs):
+        """Test method specifically for Tm prediction"""
+        with torch.no_grad():
+            return self.forward(sequence_features, **kwargs)
 
 class TmTrainer(BaseTrainer):
     def __init__(self, *args, **kwargs):
