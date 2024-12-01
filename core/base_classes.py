@@ -51,15 +51,20 @@ class BaseDNAModel(nn.Module):
             backbone_output = self.backbone(input_ids, attention_mask=attention_mask)
         
         # Handle different types of model outputs
-        if isinstance(backbone_output, dict):
-            sequence_output = backbone_output.get('last_hidden_state', backbone_output.get('hidden_states', None))
-        elif hasattr(backbone_output, 'last_hidden_state'):
+        if hasattr(backbone_output, 'last_hidden_state'):
             sequence_output = backbone_output.last_hidden_state
-        else:
+        elif isinstance(backbone_output, dict):
+            sequence_output = backbone_output.get('last_hidden_state', 
+                                               backbone_output.get('hidden_states', None))
+        elif isinstance(backbone_output, tuple):
+            sequence_output = backbone_output[0]  # Usually first element is hidden states
+        elif isinstance(backbone_output, torch.Tensor):
             sequence_output = backbone_output
+        else:
+            raise ValueError(f"Unexpected backbone output type: {type(backbone_output)}")
             
         if sequence_output is None:
-            raise ValueError("Could not extract sequence output from backbone model")
+            raise ValueError(f"Could not extract sequence output from backbone model. Output: {backbone_output}")
         
         # Extract CLS token representation
         sequence_features = sequence_output[:, 0, :]
