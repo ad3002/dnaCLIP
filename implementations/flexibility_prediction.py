@@ -173,16 +173,22 @@ class FlexibilityTrainer(BaseTrainer):
     def compute_metrics(eval_pred):
         predictions, labels = eval_pred
         
-        # Ensure proper shapes
+        # Ensure proper shapes and types
         predictions = np.asarray(predictions)
         labels = np.asarray(labels)
         
-        if predictions.ndim == 1:
-            predictions = predictions.reshape(-1, 2)
-        if labels.ndim == 1:
-            labels = labels.reshape(-1, 2)
+        # Handle single dimension predictions/labels
+        if len(predictions.shape) == 1:
+            predictions = np.stack([predictions[::2], predictions[1::2]], axis=1)
+        if len(labels.shape) == 1:
+            labels = np.stack([labels[::2], labels[1::2]], axis=1)
             
-        # Calculate metrics for both propeller twist and bendability
+        # Ensure equal lengths
+        min_len = min(len(predictions), len(labels))
+        predictions = predictions[:min_len]
+        labels = labels[:min_len]
+            
+        # Calculate metrics
         mse_prop = np.mean((predictions[:, 0] - labels[:, 0]) ** 2)
         mae_prop = np.mean(np.abs(predictions[:, 0] - labels[:, 0]))
         mse_bend = np.mean((predictions[:, 1] - labels[:, 1]) ** 2)
@@ -193,14 +199,21 @@ class FlexibilityTrainer(BaseTrainer):
             'mae_propeller': mae_prop,
             'mse_bendability': mse_bend,
             'mae_bendability': mae_bend,
-            'mae': (mae_prop + mae_bend) / 2  # Average MAE for model selection
+            'mae': (mae_prop + mae_bend) / 2
         }
 
     def _prepare_inputs(self, inputs):
         """Prepare inputs before compute_loss is called"""
         prepared = super()._prepare_inputs(inputs)
         if isinstance(inputs, dict) and "flexibility" in inputs:
-            prepared["labels"] = inputs["flexibility"]
+            labels = inputs["flexibility"]
+            if isinstance(labels, torch.Tensor):
+                # Ensure labels have shape [batch_size, 2]
+                if labels.dim() == 1:
+                    labels = labels.view(-1, 2)
+                prepared["labels"] = labels
+            else:
+                prepared["labels"] = torch.tensor(labels, device=self.args.device)
         return prepared
 
     def compute_loss(self, model, inputs, return_outputs=False, **kwargs):
@@ -212,11 +225,19 @@ class FlexibilityTrainer(BaseTrainer):
             labels = inputs.get("flexibility", None)
         if labels is None:
             raise KeyError(f"No labels found in inputs. Available keys: {inputs.keys()}")
+        
+        # Ensure labels have correct shape
+        if isinstance(labels, torch.Tensor) and labels.dim() == 1:
+            labels = labels.view(-1, 2)
             
         outputs = model(
             input_ids=inputs["input_ids"],
             attention_mask=inputs["attention_mask"]
         )
+        
+        # Ensure outputs have correct shape
+        if outputs.dim() == 1:
+            outputs = outputs.view(-1, 2)
         
         loss = model.head.compute_loss(outputs, labels)
         
