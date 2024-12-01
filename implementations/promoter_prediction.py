@@ -196,36 +196,34 @@ class PromoterTrainer(BaseTrainer):
         
         # Handle both torch.Tensor and numpy.ndarray
         if isinstance(predictions, torch.Tensor):
-            predictions = predictions.detach()
-            # Ensure predictions has shape (batch_size, num_classes)
-            if predictions.ndim == 1:
-                predictions = predictions.unsqueeze(-1)
-            predictions = predictions.argmax(dim=1).numpy()
-        else:
-            # Ensure predictions has shape (batch_size, num_classes)
-            if predictions.ndim == 1:
-                predictions = predictions.reshape(-1, 1)
+            predictions = predictions.detach().cpu().numpy()
+        
+        if isinstance(labels, torch.Tensor):
+            labels = labels.detach().cpu().numpy()
+            
+        # Ensure both are numpy arrays
+        predictions = np.asarray(predictions)
+        labels = np.asarray(labels)
+        
+        # Get class predictions from logits
+        if predictions.ndim > 1:
             predictions = predictions.argmax(axis=1)
             
-        if isinstance(labels, torch.Tensor):
-            labels = labels.numpy()
-            
-        accuracy = (predictions == labels).mean()
-        
-        # Calculate precision, recall, and F1 for positive class
-        true_pos = ((predictions == 1) & (labels == 1)).sum()
-        false_pos = ((predictions == 1) & (labels == 0)).sum()
-        false_neg = ((predictions == 0) & (labels == 1)).sum()
+        # Calculate metrics
+        accuracy = np.mean(predictions == labels)
+        true_pos = np.sum((predictions == 1) & (labels == 1))
+        false_pos = np.sum((predictions == 1) & (labels == 0))
+        false_neg = np.sum((predictions == 0) & (labels == 1))
         
         precision = true_pos / (true_pos + false_pos) if (true_pos + false_pos) > 0 else 0
         recall = true_pos / (true_pos + false_neg) if (true_pos + false_neg) > 0 else 0
         f1 = 2 * (precision * recall) / (precision + recall) if (precision + recall) > 0 else 0
         
         return {
-            'accuracy': accuracy,
-            'precision': precision,
-            'recall': recall,
-            'f1': f1
+            'accuracy': float(accuracy),  # Convert numpy types to Python types
+            'precision': float(precision),
+            'recall': float(recall),
+            'f1': float(f1)
         }
 
 def test_promoter_implementation(model, test_dataset, tokenizer, num_examples=10):
@@ -276,10 +274,10 @@ def test_promoter_implementation(model, test_dataset, tokenizer, num_examples=10
             if logits.ndim == 1:
                 logits = logits.view(-1, 2)
             
-            # Get class predictions
-            predictions = F.softmax(logits, dim=1).argmax(dim=1).numpy()
+            # Store raw logits for metrics calculation
+            batch_predictions = logits.numpy()
         
-        labels = [f['labels'] for f in features]
+        labels = np.array([f['labels'] for f in features])
         sequences = batch.get('original_sequence', 
                             [tokenizer.decode(seq, skip_special_tokens=True) 
                              for seq in batch['input_ids']])
@@ -294,8 +292,8 @@ def test_promoter_implementation(model, test_dataset, tokenizer, num_examples=10
         all_predictions = all_predictions.reshape(-1)
     all_labels = np.array(all_labels)
     
-    # Calculate metrics using the trainer's static method
-    metrics = PromoterTrainer.compute_metrics((logits.numpy(), all_labels))
+    # Calculate metrics using raw logits
+    metrics = PromoterTrainer.compute_metrics((batch_predictions, all_labels))
     
     # Print results
     print("\nTest Results:")
