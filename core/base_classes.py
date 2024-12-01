@@ -46,9 +46,20 @@ class BaseDNAModel(nn.Module):
         # Use no_grad for backbone if frozen
         if self.frozen:
             with torch.no_grad():
-                sequence_output = self.backbone(input_ids, attention_mask=attention_mask).last_hidden_state
+                backbone_output = self.backbone(input_ids, attention_mask=attention_mask)
         else:
-            sequence_output = self.backbone(input_ids, attention_mask=attention_mask).last_hidden_state
+            backbone_output = self.backbone(input_ids, attention_mask=attention_mask)
+        
+        # Handle different types of model outputs
+        if isinstance(backbone_output, dict):
+            sequence_output = backbone_output.get('last_hidden_state', backbone_output.get('hidden_states', None))
+        elif hasattr(backbone_output, 'last_hidden_state'):
+            sequence_output = backbone_output.last_hidden_state
+        else:
+            sequence_output = backbone_output
+            
+        if sequence_output is None:
+            raise ValueError("Could not extract sequence output from backbone model")
         
         # Extract CLS token representation
         sequence_features = sequence_output[:, 0, :]
