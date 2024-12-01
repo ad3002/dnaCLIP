@@ -152,7 +152,10 @@ class PromoterTrainer(BaseTrainer):
             prepared["labels"] = inputs["labels"]
         return prepared
 
-    def compute_loss(self, model, inputs, return_outputs=False):
+    def compute_loss(self, model, inputs, return_outputs=False, **kwargs):
+        """
+        Compute loss with support for additional kwargs from Trainer
+        """
         if not isinstance(inputs, dict):
             inputs = {k: v for k, v in inputs.items()}
             
