@@ -26,6 +26,9 @@ def create_model(implementation: str, model_name: str, dataset_name: str, num_ep
     # Get implementation components from registry
     head_class, generator_class, trainer_class, test_method = DNAModelRegistry.get_implementation(implementation)
     
+    # Determine device
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    
     # Initialize components with proper config
     config = AutoConfig.from_pretrained(
         model_name,
@@ -40,13 +43,14 @@ def create_model(implementation: str, model_name: str, dataset_name: str, num_ep
         model_name,
         config=config,
         trust_remote_code=True,  # Add this to match run2.py
-    )
+    ).to(device)
+    
     tokenizer = AutoTokenizer.from_pretrained(model_name)
-    head = head_class()
+    head = head_class().to(device)
     data_generator = generator_class()
     
-    # Create model
-    model = BaseDNAModel(backbone, head, data_generator)
+    # Create model and move to device
+    model = BaseDNAModel(backbone, head, data_generator).to(device)
     
     # Prepare dataset
     dataset = load_dataset(dataset_name)['train'].train_test_split(test_size=0.1)
