@@ -141,7 +141,8 @@ class BendabilityTrainer(BaseTrainer):
         if training_args:
             training_args.label_names = ["bendability"]
         
-        self.processing_class = kwargs.pop('processing_class', None)
+        # Handle both tokenizer and processing_class
+        self.processing_class = kwargs.pop('processing_class', None) or kwargs.get('tokenizer', None)
         
         if 'compute_metrics' not in kwargs:
             kwargs['compute_metrics'] = self.compute_metrics
@@ -183,10 +184,15 @@ class BendabilityTrainer(BaseTrainer):
         )
         
         device = next(model.parameters()).device
-        processor = self.processing_class or getattr(self.model, 'processing_class', None)
+        
+        # More robust processor selection
+        processor = (self.processing_class or 
+                    getattr(self, 'tokenizer', None) or 
+                    getattr(self.model, 'processing_class', None) or 
+                    getattr(self.model, 'tokenizer', None))
         
         if not processor:
-            raise ValueError("No processing_class available. Please provide a processing_class when initializing the trainer.")
+            raise ValueError("No processing_class or tokenizer available. Please provide one when initializing the trainer.")
         
         for batch in dataloader:
             inputs = {k: v.to(device) if isinstance(v, torch.Tensor) else v
@@ -270,8 +276,10 @@ def test_bendability_implementation(model, test_dataset, tokenizer, num_examples
     trainer = BendabilityTrainer(
         model=model,
         args=None,
-        processing_class=tokenizer
+        tokenizer=tokenizer,  # Change back to tokenizer for proper handling
+        processing_class=tokenizer  # Add both for compatibility
     )
+    trainer.processing_class = tokenizer  # Ensure it's set
     trainer.data_collator = BendabilityDataCollator(tokenizer=tokenizer)
     return trainer.test_model(test_dataset, num_examples)
 
