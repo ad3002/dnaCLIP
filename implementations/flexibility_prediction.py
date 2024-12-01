@@ -249,25 +249,43 @@ class FlexibilityTrainer(BaseTrainer):
         all_labels = []
         all_sequences = []
         
-        for i in range(0, len(test_dataset), self.args.per_device_eval_batch_size):
-            batch = test_dataset[i:i+self.args.per_device_eval_batch_size]
-            inputs = self._prepare_inputs(batch)
+        # Convert dataset to DataLoader for proper batching
+        from torch.utils.data import DataLoader
+        dataloader = DataLoader(
+            test_dataset,
+            batch_size=self.args.per_device_eval_batch_size if self.args else 8,
+            collate_fn=self.data_collator
+        )
+        
+        device = next(model.parameters()).device
+        
+        for batch in dataloader:
+            # Move tensors to the correct device
+            inputs = {
+                k: v.to(device) if isinstance(v, torch.Tensor) else v
+                for k, v in batch.items()
+            }
             
             with torch.no_grad():
-                predictions = model(**inputs).cpu().numpy()
+                outputs = model(**inputs)
+                predictions = outputs.cpu().numpy()
             
-            labels = batch['flexibility']
+            labels = batch['labels'].cpu().numpy() if isinstance(batch['labels'], torch.Tensor) else batch['labels']
             sequences = [
                 self.tokenizer.decode(seq, skip_special_tokens=True) 
-                for seq in batch['input_ids']
+                for seq in batch['input_ids'].cpu().numpy()
             ]
             
             all_predictions.extend(predictions)
             all_labels.extend(labels)
             all_sequences.extend(sequences)
         
-        metrics = self.compute_metrics((np.array(all_predictions), np.array(all_labels)))
+        all_predictions = np.array(all_predictions)
+        all_labels = np.array(all_labels)
         
+        metrics = self.compute_metrics((all_predictions, all_labels))
+        
+        # Print results
         print("\nTest Results:")
         for metric, value in metrics.items():
             print(f"{metric.upper()}: {value:.4f}")
@@ -277,7 +295,9 @@ class FlexibilityTrainer(BaseTrainer):
             print("Sequence\t\tPredicted (Prop, Bend)\tActual (Prop, Bend)\tDiff")
             print("-" * 80)
             
-            indices = np.random.choice(len(all_predictions), num_examples, replace=False)
+            indices = np.random.choice(len(all_predictions), 
+                                     min(num_examples, len(all_predictions)), 
+                                     replace=False)
             for idx in indices:
                 seq = all_sequences[idx]
                 pred = all_predictions[idx]
