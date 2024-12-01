@@ -3,8 +3,8 @@ from dnaCLIP.core.registry import DNAModelRegistry
 import torch.nn as nn
 import torch.nn.functional as F
 import torch
-import numpy as np  # Add this import
-from transformers import DataCollatorWithPadding, TrainingArguments  # Added TrainingArguments import
+import numpy as np
+from transformers import DataCollatorWithPadding, TrainingArguments
 from dataclasses import dataclass
 from typing import Dict, List, Union
 
@@ -388,7 +388,7 @@ def test_gc_implementation(model, test_dataset, tokenizer, num_examples=10):
     
     return metrics
 
-# Register implementation with test function
+# Register GC content implementation
 DNAModelRegistry.register(
     "gc_content",
     GcContentHead,
