@@ -41,6 +41,12 @@ class TmDataGenerator(BaseDataGenerator):
         self.Na = 50  # mM Na+
         self.R = 1.987  # Gas constant in cal/K·mol
         
+    def generate_features(self, sequence):
+        """Implementation of abstract method to generate features"""
+        if not sequence:
+            return 0.0
+        return self.calculate_tm(sequence)
+    
     def calculate_tm(self, sequence):
         """Calculate melting temperature using nearest-neighbor method"""
         sequence = sequence.upper()
