@@ -244,6 +244,7 @@ def test_promoter_implementation(model, test_dataset, tokenizer, num_examples=10
     # Create data collator for padding
     data_collator = DataCollatorWithPadding(tokenizer)
 
+    all_logits = []  # Store all logits
     for i in range(0, len(test_dataset), batch_size):
         batch = test_dataset[i:i+batch_size]
         
@@ -274,26 +275,27 @@ def test_promoter_implementation(model, test_dataset, tokenizer, num_examples=10
             if logits.ndim == 1:
                 logits = logits.view(-1, 2)
             
-            # Store raw logits for metrics calculation
-            batch_predictions = logits.numpy()
+            # Get both logits and class predictions
+            batch_logits = logits.numpy()
+            batch_predictions = F.softmax(logits, dim=1).argmax(dim=1).numpy()
         
         labels = np.array([f['labels'] for f in features])
         sequences = batch.get('original_sequence', 
                             [tokenizer.decode(seq, skip_special_tokens=True) 
                              for seq in batch['input_ids']])
         
-        all_predictions.extend(predictions)
+        all_logits.append(batch_logits)
+        all_predictions.extend(batch_predictions)
         all_labels.extend(labels)
         all_sequences.extend(sequences)
 
-    # Convert to numpy arrays and reshape if needed
+    # Concatenate all logits and convert other lists to numpy arrays
+    all_logits = np.concatenate(all_logits, axis=0)
     all_predictions = np.array(all_predictions)
-    if all_predictions.ndim == 1:
-        all_predictions = all_predictions.reshape(-1)
     all_labels = np.array(all_labels)
     
-    # Calculate metrics using raw logits
-    metrics = PromoterTrainer.compute_metrics((batch_predictions, all_labels))
+    # Calculate metrics using the trainer's static method with logits
+    metrics = PromoterTrainer.compute_metrics((all_logits, all_labels))
     
     # Print results
     print("\nTest Results:")
