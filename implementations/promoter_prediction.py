@@ -58,11 +58,15 @@ class PromoterHead(BaseHead):
     def __init__(self, input_dim=768, n_classes=2):
         super().__init__()
         self.classifier = nn.Sequential(
-            nn.Linear(input_dim, n_classes)
+            nn.Linear(input_dim, 256),
+            nn.ReLU(),
+            nn.Dropout(0.1),
+            nn.Linear(256, n_classes)
         )
     
     def forward(self, sequence_features, **kwargs):
-        return self.classifier(sequence_features)
+        logits = self.classifier(sequence_features)
+        return logits  # Return raw logits, don't apply softmax
     
     def compute_loss(self, outputs, targets):
         return F.cross_entropy(outputs, targets)
@@ -263,11 +267,17 @@ def test_promoter_implementation(model, test_dataset, tokenizer, num_examples=10
         }
         
         with torch.no_grad():
-            outputs = model(**inputs).cpu()
-            # Ensure outputs are 2D (batch_size, num_classes)
-            if outputs.ndim == 1:
-                outputs = outputs.unsqueeze(-1)
-            predictions = outputs.argmax(dim=1).numpy()
+            # Get raw logits
+            logits = model(**inputs)
+            if isinstance(logits, torch.Tensor):
+                logits = logits.cpu()
+            
+            # Check and fix logits shape
+            if logits.ndim == 1:
+                logits = logits.view(-1, 2)
+            
+            # Get class predictions
+            predictions = F.softmax(logits, dim=1).argmax(dim=1).numpy()
         
         labels = [f['labels'] for f in features]
         sequences = batch.get('original_sequence', 
@@ -278,12 +288,14 @@ def test_promoter_implementation(model, test_dataset, tokenizer, num_examples=10
         all_labels.extend(labels)
         all_sequences.extend(sequences)
 
-    # Convert to numpy arrays
+    # Convert to numpy arrays and reshape if needed
     all_predictions = np.array(all_predictions)
+    if all_predictions.ndim == 1:
+        all_predictions = all_predictions.reshape(-1)
     all_labels = np.array(all_labels)
     
     # Calculate metrics using the trainer's static method
-    metrics = PromoterTrainer.compute_metrics((all_predictions, all_labels))
+    metrics = PromoterTrainer.compute_metrics((logits.numpy(), all_labels))
     
     # Print results
     print("\nTest Results:")
