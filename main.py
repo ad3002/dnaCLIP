@@ -11,6 +11,7 @@ from datasets import load_dataset
 
 import dnaCLIP.implementations.promoter_prediction
 import dnaCLIP.implementations.gc_content
+import dnaCLIP.implementations.tm_prediction  # Add this import
 
 def list_implementations():
     implementations = DNAModelRegistry.list_implementations()
