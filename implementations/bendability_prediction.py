@@ -230,6 +230,33 @@ class BendabilityTrainer(BaseTrainer):
         """Required abstract method implementation"""
         return self.compute_metrics((predictions, labels))
 
+    def compute_loss(self, model, inputs, return_outputs=False, **kwargs):
+        if not isinstance(inputs, dict):
+            inputs = {k: v for k, v in inputs.items()}
+            
+        labels = inputs.get("labels", None)
+        if labels is None:
+            labels = inputs.get("bendability", None)
+        if labels is None:
+            raise KeyError(f"No labels found in inputs. Available keys: {inputs.keys()}")
+        
+        # Ensure labels have correct shape
+        if isinstance(labels, torch.Tensor) and labels.dim() == 1:
+            labels = labels.view(-1, 1)
+            
+        outputs = model(
+            input_ids=inputs["input_ids"],
+            attention_mask=inputs["attention_mask"]
+        )
+        
+        # Ensure outputs have correct shape
+        if outputs.dim() == 1:
+            outputs = outputs.view(-1, 1)
+        
+        loss = model.head.compute_loss(outputs, labels)
+        
+        return (loss, outputs) if return_outputs else loss
+
 def test_bendability_implementation(model, test_dataset, tokenizer, num_examples=10):
     """Standalone test function for bendability prediction"""
     trainer = BendabilityTrainer(
