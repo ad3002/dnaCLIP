@@ -192,8 +192,15 @@ class PromoterTrainer(BaseTrainer):
         
         # Handle both torch.Tensor and numpy.ndarray
         if isinstance(predictions, torch.Tensor):
+            predictions = predictions.detach()
+            # Ensure predictions has shape (batch_size, num_classes)
+            if predictions.ndim == 1:
+                predictions = predictions.unsqueeze(-1)
             predictions = predictions.argmax(dim=1).numpy()
         else:
+            # Ensure predictions has shape (batch_size, num_classes)
+            if predictions.ndim == 1:
+                predictions = predictions.reshape(-1, 1)
             predictions = predictions.argmax(axis=1)
             
         if isinstance(labels, torch.Tensor):
@@ -257,6 +264,9 @@ def test_promoter_implementation(model, test_dataset, tokenizer, num_examples=10
         
         with torch.no_grad():
             outputs = model(**inputs).cpu()
+            # Ensure outputs are 2D (batch_size, num_classes)
+            if outputs.ndim == 1:
+                outputs = outputs.unsqueeze(-1)
             predictions = outputs.argmax(dim=1).numpy()
         
         labels = [f['labels'] for f in features]
