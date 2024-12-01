@@ -1,3 +1,7 @@
+import warnings
+warnings.filterwarnings('ignore', category=UserWarning)
+warnings.filterwarnings('ignore', category=FutureWarning)
+
 import argparse
 from transformers import AutoTokenizer, AutoModel, DataCollatorWithPadding, AutoConfig
 from dnaCLIP.core.base_classes import BaseDNAModel, BaseTrainer
