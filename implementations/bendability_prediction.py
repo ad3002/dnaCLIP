@@ -152,8 +152,14 @@ class BendabilityTrainer(BaseTrainer):
     def compute_metrics(eval_pred):
         predictions, labels = eval_pred
         
+        # Ensure proper shapes and types
         predictions = np.asarray(predictions).reshape(-1)
         labels = np.asarray(labels).reshape(-1)
+        
+        # Ensure equal lengths
+        min_len = min(len(predictions), len(labels))
+        predictions = predictions[:min_len]
+        labels = labels[:min_len]
         
         mse = np.mean((predictions - labels) ** 2)
         mae = np.mean(np.abs(predictions - labels))
@@ -162,7 +168,7 @@ class BendabilityTrainer(BaseTrainer):
             'mse': mse,
             'mae': mae,
         }
-    
+
     def test_model(self, test_dataset, num_examples=10):
         model = self.model.eval()
         all_predictions = []
@@ -240,9 +246,11 @@ class BendabilityTrainer(BaseTrainer):
         if labels is None:
             raise KeyError(f"No labels found in inputs. Available keys: {inputs.keys()}")
         
-        # Ensure labels have correct shape
-        if isinstance(labels, torch.Tensor) and labels.dim() == 1:
-            labels = labels.view(-1, 1)
+        # Ensure labels have correct shape and type
+        if isinstance(labels, torch.Tensor):
+            if labels.dim() == 1:
+                labels = labels.view(-1, 1)
+            labels = labels.float()
             
         outputs = model(
             input_ids=inputs["input_ids"],
