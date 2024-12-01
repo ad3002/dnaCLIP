@@ -134,6 +134,50 @@ class TmTrainer(BaseTrainer):
             'mae': mae
         }
 
+    def _prepare_inputs(self, inputs):
+        """Prepare inputs before compute_loss is called"""
+        prepared = super()._prepare_inputs(inputs)
+        if isinstance(inputs, dict) and "melting_temp" in inputs:
+            prepared["labels"] = inputs["melting_temp"]
+        return prepared
+
+    def compute_loss(self, model, inputs, return_outputs=False, **kwargs):
+        # Convert inputs to dict if it's not already
+        if not isinstance(inputs, dict):
+            inputs = {k: v for k, v in inputs.items()}
+            
+        # Get the labels
+        labels = inputs.get("labels", None)
+        if labels is None:
+            labels = inputs.get("melting_temp", None)
+        if labels is None:
+            raise KeyError(f"No labels found in inputs. Available keys: {inputs.keys()}")
+            
+        # Get model outputs
+        outputs = model(
+            input_ids=inputs["input_ids"],
+            attention_mask=inputs["attention_mask"]
+        )
+        
+        # Compute loss
+        loss = model.head.compute_loss(outputs, labels)
+        
+        return (loss, outputs) if return_outputs else loss
+
+    def prediction_step(self, model, inputs, prediction_loss_only, ignore_keys=None):
+        """Custom prediction step to ensure consistent shapes"""
+        inputs = self._prepare_inputs(inputs)
+        tm_content = inputs["melting_temp"] if "melting_temp" in inputs else inputs["labels"]
+        
+        with torch.no_grad():
+            outputs = model(
+                input_ids=inputs["input_ids"],
+                attention_mask=inputs["attention_mask"]
+            )
+            loss = model.head.compute_loss(outputs, tm_content)
+            
+        return (loss.detach(), outputs.detach(), tm_content)
+
 def test_tm_implementation(model, test_dataset, tokenizer, num_examples=10):
     """Standalone test function for Tm implementation"""
     if test_dataset is None or len(test_dataset) == 0:
