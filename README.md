@@ -10,13 +10,23 @@ A modular framework for DNA sequence analysis using transformer-based models and
 - 📊 Multiple prediction tasks support
 - 🔄 Easy to extend with new implementations
 - 📈 Built-in metrics and visualization
+- 🚀 Command-line interface for easy use
+- 📝 Automatic logging and evaluation
+- 🔍 Detailed testing and metrics reporting
 
 ## Supported Tasks
 
 Currently implemented tasks:
 
-- **Promoter Prediction**: Binary classification of DNA sequences for promoter presence
-- **GC Content Prediction**: Regression task for GC content estimation
+- **Promoter Prediction**: Binary classification for promoter identification
+  - Metrics: Accuracy, Precision, Recall, F1-score
+  - Built-in sequence validation
+  - Optimized for batch processing
+
+- **GC Content Prediction**: Regression for GC content estimation
+  - Metrics: MSE, MAE, Correlation
+  - Sequence-level analysis
+  - Real-time evaluation
 
 ## Quick Start
 
@@ -28,93 +38,82 @@ cd dnaCLIP
 pip install -e .
 ```
 
-### Basic Usage
+### Command Line Usage
+
+List available implementations:
+```bash
+python -m dnaCLIP.main --list
+```
+
+Train and test a model:
+```bash
+# For promoter prediction
+python -m dnaCLIP.main --implementation promoter -e 5
+
+# For GC content prediction
+python -m dnaCLIP.main --implementation gc_content -e 5
+```
+
+Custom model and dataset:
+```bash
+python -m dnaCLIP.main \
+    --implementation promoter \
+    --model "AIRI-Institute/gena-lm-bert-base-t2t-multi" \
+    --dataset "your_dataset_name" \
+    -e 10
+```
+
+### Python API Usage
 
 ```python
-from dnaCLIP import DNAModel
+from dnaCLIP import DNAModel, DNATrainer, DNADataset
 
-# Initialize model for promoter prediction
+# Promoter prediction
 model = DNAModel.from_pretrained("promoter")
+predictions = model.predict(["ATCG...", "GCTA..."])
 
-# Make predictions
-sequences = ["ATCG...", "GCTA..."]
-predictions = model.predict(sequences)
-```
-
-## Advanced Usage
-
-### Training a New Model
-
-```python
-from dnaCLIP import DNATrainer, DNADataset
-
-# Prepare dataset
-dataset = DNADataset.from_files(
-    train="train.fa",
-    test="test.fa",
-    task="promoter"
-)
-
-# Initialize and train
-trainer = DNATrainer(
-    implementation="promoter",
-    model="AIRI-Institute/gena-lm-bert-base-t2t-multi"
-)
-trainer.train(dataset)
-```
-
-### Custom Implementation
-
-1. Create implementation file:
-
-```python
-from dnaCLIP.core import BaseHead, BaseTrainer, BaseDataGenerator
-
-class MyTaskHead(BaseHead):
-    def __init__(self, input_dim=768):
-        super().__init__()
-        self.net = nn.Sequential(...)
-    
-    def forward(self, x):
-        return self.net(x)
-
-# Register implementation
-DNAModelRegistry.register(
-    "my_task",
-    MyTaskHead,
-    MyTaskDataGenerator,
-    MyTaskTrainer,
-    test_function
-)
-```
-
-2. Use your implementation:
-
-```python
-model = DNAModel.from_pretrained("my_task")
+# GC content prediction
+gc_model = DNAModel.from_pretrained("gc_content")
+gc_values = gc_model.predict(["ATCG...", "GCTA..."])
 ```
 
 ## Configuration
 
-Each implementation can be configured via a config file:
+Each implementation supports the following parameters:
 
 ```yaml
 model:
   name: "AIRI-Institute/gena-lm-bert-base-t2t-multi"
-  max_length: 512
+  max_length: 128
+  hidden_dropout_prob: 0.1
+  attention_probs_dropout_prob: 0.1
 
 training:
   batch_size: 32
   learning_rate: 2e-5
   epochs: 10
+  evaluation_strategy: "steps"
+  eval_steps: 100
+  logging_steps: 100
 ```
 
-## Testing
+## Troubleshooting
 
-Run test suite:
-```bash
-pytest tests/
-```
+Common issues and solutions:
+
+1. CUDA out of memory:
+   - Reduce batch size
+   - Reduce sequence length
+   
+2. Poor performance:
+   - Increase number of epochs
+   - Adjust learning rate
+   - Check data distribution
+
+3. Data loading issues:
+   - Ensure correct dataset format
+   - Check sequence length compatibility
+   - Verify label format
 
 ## Contributing
 
@@ -128,8 +127,6 @@ pytest tests/
 MIT License
 
 ## Citation
-
-If you use dnaCLIP in your research, please cite:
 
 ```bibtex
 @software{dnaclip2024,
