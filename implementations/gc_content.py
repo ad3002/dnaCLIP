@@ -93,6 +93,13 @@ class GcContentTrainer(BaseTrainer, MetricsCalculationMixin):
         kwargs.setdefault('compute_metrics', self.compute_metrics)
         super().__init__(*args, **kwargs)
 
+    def compute_loss(self, model, inputs, return_outputs=False, **kwargs):
+        labels = inputs.pop("labels")
+        outputs = model(**inputs)
+        loss = model.head.compute_loss(outputs, labels)
+        
+        return (loss, outputs) if return_outputs else loss
+
     @staticmethod
     def compute_metrics(eval_pred):
         predictions, labels = eval_pred
