@@ -8,9 +8,25 @@ from transformers import DataCollatorWithPadding, TrainingArguments
 from dataclasses import dataclass
 from typing import Dict, List, Union
 
-NUCLEOTIDE_TO_IDX = {'A': 0, 'T': 1, 'G': 2, 'C': 3}
-IDX_TO_NUCLEOTIDE = {0: 'A', 1: 'T', 2: 'G', 3: 'C'}
-COMPLEMENT = {'A': 'T', 'T': 'A', 'G': 'C', 'C': 'G'}
+NUCLEOTIDE_TO_IDX = {'A': 0, 'T': 1, 'G': 2, 'C': 3, 'N': 4}
+IDX_TO_NUCLEOTIDE = {0: 'A', 1: 'T', 2: 'G', 3: 'C', 4: 'N'}
+COMPLEMENT = {
+    'A': 'T', 
+    'T': 'A', 
+    'G': 'C', 
+    'C': 'G',
+    'N': 'N',  # Non-standard nucleotide
+    'R': 'Y',  # Purine (A or G)
+    'Y': 'R',  # Pyrimidine (C or T)
+    'K': 'M',  # Keto (G or T)
+    'M': 'K',  # Amino (A or C)
+    'S': 'S',  # Strong (G or C)
+    'W': 'W',  # Weak (A or T)
+    'B': 'V',  # not A (C or G or T)
+    'V': 'B',  # not T (A or C or G)
+    'D': 'H',  # not C (A or G or T)
+    'H': 'D',  # not G (A or C or T)
+}
 
 @dataclass
 class ReverseComplementDataCollator(DataCollatorWithPadding):
@@ -39,11 +55,12 @@ class ReverseComplementDataGenerator(BaseDataGenerator):
         return sequence
     
     def sequence_to_labels(self, sequence):
-        # Convert sequence to numerical labels
-        return [NUCLEOTIDE_TO_IDX[nt] for nt in sequence.upper()]
+        """Convert sequence to numerical labels with handling for non-standard nucleotides"""
+        return [NUCLEOTIDE_TO_IDX.get(nt, NUCLEOTIDE_TO_IDX['N']) for nt in sequence.upper()]
     
     def get_reverse_complement(self, sequence):
-        return ''.join(COMPLEMENT[nt] for nt in sequence.upper()[::-1])
+        """Get reverse complement with handling for non-standard nucleotides"""
+        return ''.join(COMPLEMENT.get(nt, 'N') for nt in sequence.upper()[::-1])
     
     def prepare_dataset(self, dataset, tokenizer):
         def preprocess_function(examples):
@@ -90,7 +107,7 @@ class ReverseComplementHead(BaseHead):
             nn.GELU(),
             nn.LayerNorm(256),
             nn.Dropout(0.1),
-            nn.Linear(256, 4)  # 4 classes for A,T,G,C
+            nn.Linear(256, 5)  # 5 classes for A,T,G,C,N
         )
     
     def forward(self, sequence_features, **kwargs):
