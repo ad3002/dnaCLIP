@@ -32,6 +32,12 @@ class ReverseComplementDataGenerator(BaseDataGenerator):
         self.max_length = max_length
         self.data_collator = None
     
+    def generate_features(self, sequence):
+        """Generate reverse complement features for a single sequence"""
+        # For reverse complement task, we return the sequence itself 
+        # since the actual processing happens in prepare_dataset
+        return sequence
+    
     def sequence_to_labels(self, sequence):
         # Convert sequence to numerical labels
         return [NUCLEOTIDE_TO_IDX[nt] for nt in sequence.upper()]
