@@ -87,26 +87,20 @@ def create_model(implementation: str, model_name: str, dataset_name: str, num_ep
     config = AutoConfig.from_pretrained(
         model_name,
         trust_remote_code=True,
-        tie_word_embeddings=False,  # Add this to prevent weight sharing
+        tie_word_embeddings=False,
         layer_norm_eps=1e-7,
         hidden_dropout_prob=0.1,
         attention_probs_dropout_prob=0.1
     )
     
-    backbone = AutoModel.from_pretrained(
-        model_name,
-        config=config,
-        trust_remote_code=True,  # Add this to match run2.py
-    ).to(device)
-    
-    # Freeze backbone if requested
-    if frozen:
-        for param in backbone.parameters():
-            param.requires_grad = False
-    
+    # Initialize all components
     tokenizer = AutoTokenizer.from_pretrained(model_name)
+    backbone = AutoModel.from_pretrained(model_name, config=config, trust_remote_code=True).to(device)
     head = head_class().to(device)
     data_generator = generator_class()
+
+    # Create the full model
+    model = BaseDNAModel(backbone, head, data_generator, frozen=frozen).to(device)
     
     # Prepare dataset with error handling
     try:
@@ -134,19 +128,20 @@ def create_model(implementation: str, model_name: str, dataset_name: str, num_ep
         print(traceback.format_exc())
         raise
     
-    # Create trainer with default arguments
+    # Create trainer with default arguments and properly initialized model
     training_args = BaseTrainer.get_default_args(
         f"outputs/{implementation}",
         num_train_epochs=num_epochs,
         save_checkpoints=save_checkpoints
     )
+    
     trainer = trainer_class(
-        model=model,
+        model=model,  # Now model is defined before being used here
         args=training_args,
         train_dataset=tokenized_dataset["train"],
         eval_dataset=tokenized_dataset["test"],
         tokenizer=tokenizer,
-        data_collator=data_generator.data_collator  # Use the custom data collator
+        data_collator=data_generator.data_collator
     )
     
     return model, tokenizer, trainer, data_generator, tokenized_dataset, test_method
