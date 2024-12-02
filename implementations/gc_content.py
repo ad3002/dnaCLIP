@@ -13,16 +13,58 @@ class GcContentDataGenerator(BaseDataGenerator, NucleotideFeaturesMixin):
         self.max_length = max_length
         self.data_collator = None
     
+    def calculate_gc_content(self, sequence):
+        """Calculate GC content of a DNA sequence"""
+        if not sequence:
+            return 0.0
+        sequence = sequence.upper()
+        gc_count = sequence.count('G') + sequence.count('C')
+        return gc_count / len(sequence)
+    
     def generate_features(self, sequence):
         return self.calculate_gc_content(sequence)
     
     def prepare_dataset(self, dataset, tokenizer):
+        """Prepare dataset for GC content prediction"""
         self.data_collator = RegressionDataCollator(
             tokenizer=tokenizer,
             label_name="gc_content"
         )
         
-        return super().prepare_dataset(dataset, tokenizer)
+        def process_example(example):
+            sequence = example.get('sequence', '')
+            if not sequence:
+                return None
+                
+            # Calculate GC content
+            gc_content = self.calculate_gc_content(sequence)
+            
+            # Tokenize sequence
+            tokens = tokenizer(
+                sequence,
+                truncation=True,
+                max_length=self.max_length,
+                return_tensors=None
+            )
+            
+            return {
+                **tokens,
+                "gc_content": gc_content,
+                "original_sequence": sequence
+            }
+        
+        # Process both train and test splits
+        processed_dataset = {}
+        for split in ['train', 'test']:
+            if split in dataset:
+                processed_data = dataset[split].map(
+                    process_example,
+                    remove_columns=dataset[split].column_names,
+                    desc=f"Processing {split} split"
+                )
+                processed_dataset[split] = processed_data
+        
+        return processed_dataset
 
 class GcContentHead(BaseHead):
     def __init__(self, input_dim=768):
