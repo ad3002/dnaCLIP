@@ -136,6 +136,11 @@ class ReverseComplementHead(BaseHead):
         targets = targets.view(-1)  # [batch_size * seq_length]
         
         return F.cross_entropy(outputs, targets)
+    
+    def test(self, sequence_features, **kwargs):
+        """Test method for reverse complement prediction"""
+        with torch.no_grad():
+            return self.forward(sequence_features, **kwargs)
 
 class ReverseComplementTrainer(BaseTrainer):
     def __init__(self, *args, **kwargs):
