@@ -234,10 +234,17 @@ class ReverseComplementTrainer(BaseTrainer):
         all_predictions = []
         all_labels = []
         all_sequences = []
+        device = next(model.parameters()).device
         
         for i in range(0, len(test_dataset), self.args.per_device_eval_batch_size):
             batch = test_dataset[i:i+self.args.per_device_eval_batch_size]
-            inputs = self._prepare_inputs(batch)
+            
+            # Convert inputs to proper tensor format
+            inputs = {
+                "input_ids": torch.tensor(batch["input_ids"], device=device),
+                "attention_mask": torch.tensor(batch["attention_mask"], device=device),
+                "rev_comp_labels": torch.tensor(batch["rev_comp_labels"], device=device)
+            }
             
             with torch.no_grad():
                 outputs = model(
@@ -246,15 +253,15 @@ class ReverseComplementTrainer(BaseTrainer):
                 )
                 predictions = outputs.argmax(dim=-1)
             
-            labels = inputs["rev_comp_labels"]
+            # Get sequences for display
             sequences = [
                 self.tokenizer.decode(seq, skip_special_tokens=True) 
-                for seq in inputs["input_ids"]
+                for seq in batch["input_ids"]
             ]
             
             # Move tensors to CPU and convert to numpy
             predictions = predictions.cpu().numpy()
-            labels = labels.cpu().numpy()
+            labels = inputs["rev_comp_labels"].cpu().numpy()
             
             all_predictions.extend(predictions)
             all_labels.extend(labels)
