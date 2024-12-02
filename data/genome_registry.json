@@ -1,0 +1,21 @@
+
+{
+    "genomes": {
+        "prokaryotes": {
+            "path": "path/to/prokaryotes/genomes/",
+            "sequences": ["genome1", "genome2"],
+            "metadata": {
+                "taxonomy": "prokaryote",
+                "quality_score": "high"
+            }
+        },
+        "archaea": {
+            "path": "path/to/archaea/genomes/",
+            "sequences": ["genome1", "genome2"],
+            "metadata": {
+                "taxonomy": "archaea",
+                "quality_score": "high"
+            }
+        }
+    }
+}
