@@ -108,12 +108,31 @@ def create_model(implementation: str, model_name: str, dataset_name: str, num_ep
     head = head_class().to(device)
     data_generator = generator_class()
     
-    # Create model and move to device
-    model = BaseDNAModel(backbone, head, data_generator, frozen=frozen).to(device)
+    # Prepare dataset with error handling
+    try:
+        print(f"\nLoading dataset: {dataset_name}")
+        raw_dataset = load_dataset(dataset_name)
+        if not raw_dataset or 'train' not in raw_dataset:
+            raise ValueError(f"Failed to load dataset '{dataset_name}' or missing 'train' split")
+        
+        print("Splitting dataset...")
+        dataset = raw_dataset['train'].train_test_split(test_size=0.1)
+        if not dataset or 'train' not in dataset or 'test' not in dataset:
+            raise ValueError("Failed to split dataset into train/test")
+            
+        print("Preparing tokenized dataset...")
+        tokenized_dataset = data_generator.prepare_dataset(dataset, tokenizer)
+        if not tokenized_dataset:
+            raise ValueError("Dataset preparation failed - no data returned from prepare_dataset")
+            
+        print(f"Dataset preparation complete. Train size: {len(tokenized_dataset['train'])}, "
+              f"Test size: {len(tokenized_dataset['test'])}")
     
-    # Prepare dataset
-    dataset = load_dataset(dataset_name)['train'].train_test_split(test_size=0.1)
-    tokenized_dataset = data_generator.prepare_dataset(dataset, tokenizer)
+    except Exception as e:
+        print(f"\nError preparing dataset: {str(e)}")
+        print("Dataset loading traceback:")
+        print(traceback.format_exc())
+        raise
     
     # Create trainer with default arguments
     training_args = BaseTrainer.get_default_args(
