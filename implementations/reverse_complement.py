@@ -102,22 +102,14 @@ class ReverseComplementDataGenerator(BaseDataGenerator):
 class ReverseComplementHead(BaseHead):
     def __init__(self, input_dim=768):
         super().__init__()
-        self.dense = nn.Linear(input_dim, input_dim)
+        self.sequence_proj = nn.Linear(input_dim, input_dim)
         self.layer_norm = nn.LayerNorm(input_dim)
         self.classifier = nn.Linear(input_dim, 5)  # 5 classes for A,T,G,C,N
     
     def forward(self, sequence_features, attention_mask=None, **kwargs):
-        # Handle pooled features case (when sequence_features is [batch_size, hidden_dim])
-        if len(sequence_features.shape) == 2:
-            if attention_mask is None:
-                raise ValueError("attention_mask required for sequence length reconstruction")
-            
-            # Project pooled features back to sequence length
-            sequence_features = self.dense(sequence_features)  # [batch_size, hidden_dim]
-            sequence_length = attention_mask.sum(dim=1).max().item()
-            sequence_features = sequence_features.unsqueeze(1).expand(-1, sequence_length, -1)
-        
-        # Apply layer norm and classification
+        """Forward pass that uses full sequence features"""
+        # Handle sequence-level features
+        sequence_features = self.sequence_proj(sequence_features)
         sequence_features = self.layer_norm(sequence_features)
         logits = self.classifier(sequence_features)
         
@@ -229,7 +221,7 @@ class ReverseComplementTrainer(BaseTrainer):
         }
 
     def test_model(self, test_dataset, num_examples=10):
-        """Test reverse complement prediction model with proper batch padding"""
+        """Test reverse complement prediction model with proper sequence handling"""
         model = self.model.eval()
         all_predictions = []
         all_labels = []
@@ -257,32 +249,38 @@ class ReverseComplementTrainer(BaseTrainer):
             }
             
             with torch.no_grad():
-                outputs = model(
+                # Get backbone outputs
+                backbone_output = model.backbone(
                     input_ids=inputs["input_ids"],
-                    attention_mask=inputs["attention_mask"]
+                    attention_mask=inputs["attention_mask"],
+                    output_hidden_states=True
                 )
+                
+                # Use last hidden state for sequence prediction
+                sequence_features = backbone_output.last_hidden_state
+                
+                # Get head outputs
+                outputs = model.head(sequence_features)
                 predictions = outputs.argmax(dim=-1)
             
-            # Get sequences for display using processing_class
+            # Get sequences for display
             sequences = [
                 self.processing_class.decode(seq, skip_special_tokens=True) 
                 for seq in batch["input_ids"]
             ]
             
-            # Ensure predictions and labels have matching sequence lengths
-            seq_length = outputs.shape[1]
-            curr_predictions = predictions[:, :seq_length].cpu().numpy()
-            curr_labels = inputs["rev_comp_labels"][:, :seq_length].cpu().numpy()
-            
-            # Keep track of sequence-aligned predictions and labels
-            for pred, label in zip(curr_predictions, curr_labels):
-                # Use attention mask to get actual sequence length
-                mask = inputs["attention_mask"][0, :seq_length].cpu().numpy()
-                seq_len = mask.sum()
+            # Process each sequence in the batch
+            for idx in range(len(predictions)):
+                # Get attention mask for current sequence
+                mask = inputs["attention_mask"][idx].bool()
+                seq_len = mask.sum().item()
                 
-                # Only keep non-padded tokens
-                all_predictions.append(pred[:seq_len])
-                all_labels.append(label[:seq_len])
+                # Get actual sequence length predictions and labels
+                pred = predictions[idx, :seq_len].cpu().numpy()
+                label = inputs["rev_comp_labels"][idx, :seq_len].cpu().numpy()
+                
+                all_predictions.append(pred)
+                all_labels.append(label)
             
             all_sequences.extend(sequences)
         
@@ -296,15 +294,28 @@ class ReverseComplementTrainer(BaseTrainer):
         
         if num_examples > 0:
             print("\nSample Predictions:")
-            print("Original Sequence\tPredicted\tActual")
+            print("Original\t\tPredicted\tActual")
+            print("(first5...last5)\t(first5...last5)\t(first5...last5)")
             print("-" * 70)
             
             indices = np.random.choice(len(all_sequences), min(num_examples, len(all_sequences)), replace=False)
             for idx in indices:
+                # Get original sequence start/end
                 orig_seq = all_sequences[idx]
+                orig_first5 = orig_seq[:5]
+                orig_last5 = orig_seq[-5:] if len(orig_seq) > 5 else ""
+                
+                # Get predicted sequence start/end
                 pred_seq = self._indices_to_sequence(all_predictions[idx])
+                pred_first5 = pred_seq[:5]
+                pred_last5 = pred_seq[-5:] if len(pred_seq) > 5 else ""
+                
+                # Get actual sequence start/end
                 actual_seq = self._indices_to_sequence(all_labels[idx])
-                print(f"{orig_seq[:20]}...\t{pred_seq[:20]}...\t{actual_seq[:20]}...")
+                actual_first5 = actual_seq[:5]
+                actual_last5 = actual_seq[-5:] if len(actual_seq) > 5 else ""
+                
+                print(f"{orig_first5}...{orig_last5}\t{pred_first5}...{pred_last5}\t{actual_first5}...{actual_last5}")
         
         return metrics
     
