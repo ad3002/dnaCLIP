@@ -263,22 +263,27 @@ class ReverseComplementTrainer(BaseTrainer):
                 )
                 predictions = outputs.argmax(dim=-1)
             
-            # Get sequences for display
+            # Get sequences for display using processing_class instead of tokenizer
             sequences = [
-                self.tokenizer.decode(seq, skip_special_tokens=True) 
+                self.processing_class.decode(seq, skip_special_tokens=True) 
                 for seq in batch["input_ids"]
             ]
             
-            # Use attention mask to mask out padding predictions
-            mask = inputs["attention_mask"].bool()
-            predictions = predictions[mask].cpu().numpy()
-            labels = inputs["rev_comp_labels"][mask].cpu().numpy()
+            # Ensure predictions and labels have matching sequence lengths
+            seq_length = outputs.shape[1]
+            curr_predictions = predictions[:, :seq_length]
+            curr_labels = inputs["rev_comp_labels"][:, :seq_length]
             
-            all_predictions.extend(predictions)
-            all_labels.extend(labels)
+            # Use attention mask to mask out padding tokens
+            mask = inputs["attention_mask"][:, :seq_length].bool()
+            curr_predictions = curr_predictions[mask].cpu().numpy()
+            curr_labels = curr_labels[mask].cpu().numpy()
+            
+            all_predictions.extend(curr_predictions)
+            all_labels.extend(curr_labels)
             all_sequences.extend(sequences)
         
-        # Convert to numpy arrays
+        # Convert to numpy arrays for metric calculation
         all_predictions = np.array(all_predictions)
         all_labels = np.array(all_labels)
         
@@ -298,11 +303,8 @@ class ReverseComplementTrainer(BaseTrainer):
             indices = np.random.choice(len(all_sequences), min(num_examples, len(all_sequences)), replace=False)
             for idx in indices:
                 orig_seq = all_sequences[idx]
-                pred_tokens = predictions[idx] if idx < len(predictions) else []
-                actual_tokens = all_labels[idx] if idx < len(all_labels) else []
-                
-                pred_seq = self._indices_to_sequence(pred_tokens)
-                actual_seq = self._indices_to_sequence(actual_tokens)
+                pred_seq = self._indices_to_sequence(all_predictions[max(0, idx-len(pred_tokens)):idx])
+                actual_seq = self._indices_to_sequence(all_labels[max(0, idx-len(actual_tokens)):idx])
                 print(f"{orig_seq[:20]}...\t{pred_seq[:20]}...\t{actual_seq[:20]}...")
         
         return metrics
