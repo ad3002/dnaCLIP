@@ -114,29 +114,28 @@ class ReverseComplementHead(BaseHead):
             
             # Project pooled features back to sequence length
             sequence_features = self.dense(sequence_features)  # [batch_size, hidden_dim]
-            sequence_features = sequence_features.unsqueeze(1)  # [batch_size, 1, hidden_dim]
             sequence_length = attention_mask.sum(dim=1).max().item()
-            sequence_features = sequence_features.expand(-1, sequence_length, -1)  # [batch_size, seq_len, hidden_dim]
+            sequence_features = sequence_features.unsqueeze(1).expand(-1, sequence_length, -1)
         
         # Apply layer norm and classification
         sequence_features = self.layer_norm(sequence_features)
-        logits = self.classifier(sequence_features)  # [batch_size, seq_len, num_classes]
+        logits = self.classifier(sequence_features)
         
         return logits
     
     def compute_loss(self, outputs, targets):
+        """Compute cross entropy loss with proper reshaping"""
         # Ensure shapes match
         batch_size, seq_length, num_classes = outputs.shape
         if targets.shape[1] != seq_length:
-            # Truncate targets to match sequence length if necessary
             targets = targets[:, :seq_length]
         
-        # Reshape for cross entropy
-        outputs = outputs.view(-1, num_classes)  # [batch_size * seq_length, num_classes]
-        targets = targets.view(-1)  # [batch_size * seq_length]
+        # Make tensors contiguous and reshape
+        outputs = outputs.contiguous().view(-1, num_classes)
+        targets = targets.contiguous().view(-1)
         
         return F.cross_entropy(outputs, targets)
-    
+
     def test(self, sequence_features, **kwargs):
         """Test method for reverse complement prediction"""
         with torch.no_grad():
