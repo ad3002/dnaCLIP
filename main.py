@@ -17,6 +17,7 @@ import dnaCLIP.implementations.gc_content
 import dnaCLIP.implementations.tm_prediction
 import dnaCLIP.implementations.flexibility_prediction
 import dnaCLIP.implementations.bendability_prediction
+import dnaCLIP.implementations.reverse_complement
 
 def get_directory_size(path):
     """Calculate total size of a directory in GB"""
