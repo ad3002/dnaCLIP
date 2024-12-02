@@ -263,7 +263,7 @@ class ReverseComplementTrainer(BaseTrainer):
                 )
                 predictions = outputs.argmax(dim=-1)
             
-            # Get sequences for display using processing_class instead of tokenizer
+            # Get sequences for display using processing_class
             sequences = [
                 self.processing_class.decode(seq, skip_special_tokens=True) 
                 for seq in batch["input_ids"]
@@ -271,21 +271,20 @@ class ReverseComplementTrainer(BaseTrainer):
             
             # Ensure predictions and labels have matching sequence lengths
             seq_length = outputs.shape[1]
-            curr_predictions = predictions[:, :seq_length]
-            curr_labels = inputs["rev_comp_labels"][:, :seq_length]
+            curr_predictions = predictions[:, :seq_length].cpu().numpy()
+            curr_labels = inputs["rev_comp_labels"][:, :seq_length].cpu().numpy()
             
-            # Use attention mask to mask out padding tokens
-            mask = inputs["attention_mask"][:, :seq_length].bool()
-            curr_predictions = curr_predictions[mask].cpu().numpy()
-            curr_labels = curr_labels[mask].cpu().numpy()
+            # Keep track of sequence-aligned predictions and labels
+            for pred, label in zip(curr_predictions, curr_labels):
+                # Use attention mask to get actual sequence length
+                mask = inputs["attention_mask"][0, :seq_length].cpu().numpy()
+                seq_len = mask.sum()
+                
+                # Only keep non-padded tokens
+                all_predictions.append(pred[:seq_len])
+                all_labels.append(label[:seq_len])
             
-            all_predictions.extend(curr_predictions)
-            all_labels.extend(curr_labels)
             all_sequences.extend(sequences)
-        
-        # Convert to numpy arrays for metric calculation
-        all_predictions = np.array(all_predictions)
-        all_labels = np.array(all_labels)
         
         # Calculate metrics
         metrics = self.get_test_metrics(all_predictions, all_labels)
@@ -303,26 +302,35 @@ class ReverseComplementTrainer(BaseTrainer):
             indices = np.random.choice(len(all_sequences), min(num_examples, len(all_sequences)), replace=False)
             for idx in indices:
                 orig_seq = all_sequences[idx]
-                pred_seq = self._indices_to_sequence(all_predictions[max(0, idx-len(pred_tokens)):idx])
-                actual_seq = self._indices_to_sequence(all_labels[max(0, idx-len(actual_tokens)):idx])
+                pred_seq = self._indices_to_sequence(all_predictions[idx])
+                actual_seq = self._indices_to_sequence(all_labels[idx])
                 print(f"{orig_seq[:20]}...\t{pred_seq[:20]}...\t{actual_seq[:20]}...")
         
         return metrics
-
+    
     def get_test_metrics(self, predictions, labels):
-        """Calculate reverse complement specific metrics"""
-        # Calculate position-wise accuracy
-        position_accuracy = (predictions == labels).mean()
+        """Calculate reverse complement specific metrics with sequence alignment"""
+        position_matches = 0
+        total_positions = 0
+        sequence_matches = 0
+        total_sequences = len(predictions)
         
-        # Calculate sequence-wise accuracy
-        sequence_matches = (predictions == labels).all(axis=1)
-        sequence_accuracy = sequence_matches.mean()
+        # Calculate metrics while preserving sequence alignment
+        for pred_seq, label_seq in zip(predictions, labels):
+            # Position-wise accuracy
+            matches = (pred_seq == label_seq).sum()
+            position_matches += matches
+            total_positions += len(pred_seq)
+            
+            # Sequence-wise accuracy
+            if len(pred_seq) == len(label_seq) and (pred_seq == label_seq).all():
+                sequence_matches += 1
         
         return {
-            'position_accuracy': float(position_accuracy),
-            'sequence_accuracy': float(sequence_accuracy)
+            'position_accuracy': float(position_matches) / total_positions if total_positions > 0 else 0.0,
+            'sequence_accuracy': float(sequence_matches) / total_sequences if total_sequences > 0 else 0.0
         }
-    
+
     def _indices_to_sequence(self, indices):
         """Convert numerical indices back to nucleotide sequence"""
         return ''.join(IDX_TO_NUCLEOTIDE.get(idx, 'N') for idx in indices)
