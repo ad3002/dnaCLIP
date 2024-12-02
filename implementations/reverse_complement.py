@@ -111,17 +111,26 @@ class ReverseComplementHead(BaseHead):
         )
     
     def forward(self, sequence_features, **kwargs):
-        """Forward pass reshaping output to [batch_size, seq_length, num_classes]"""
-        batch_size, seq_length, _ = sequence_features.shape
-        logits = self.classifier(sequence_features)  # [batch_size * seq_length, num_classes]
-        return logits.view(batch_size, seq_length, -1)  # reshape to [batch_size, seq_length, num_classes]
+        """Forward pass handling both sequence-level and token-level features"""
+        # Handle both cases: [batch_size, hidden_dim] and [batch_size, seq_length, hidden_dim]
+        if len(sequence_features.shape) == 2:
+            batch_size, hidden_dim = sequence_features.shape
+            # Assume single token for sequence-level features
+            logits = self.classifier(sequence_features)  # [batch_size, num_classes]
+            return logits.unsqueeze(1)  # [batch_size, 1, num_classes]
+        else:
+            batch_size, seq_length, _ = sequence_features.shape
+            # Reshape for efficiency
+            flat_features = sequence_features.view(-1, sequence_features.size(-1))
+            logits = self.classifier(flat_features)
+            return logits.view(batch_size, seq_length, -1)
     
     def compute_loss(self, outputs, targets):
-        """Compute cross entropy loss"""
-        batch_size, seq_length, num_classes = outputs.shape
+        """Compute cross entropy loss for any input shape"""
+        num_classes = outputs.size(-1)
         return F.cross_entropy(
-            outputs.view(-1, num_classes),  # [batch_size * seq_length, num_classes]
-            targets.view(-1)                # [batch_size * seq_length]
+            outputs.view(-1, num_classes),
+            targets.view(-1)
         )
     
     def test(self, sequence_features, **kwargs):
