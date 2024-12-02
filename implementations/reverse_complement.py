@@ -102,36 +102,40 @@ class ReverseComplementDataGenerator(BaseDataGenerator):
 class ReverseComplementHead(BaseHead):
     def __init__(self, input_dim=768):
         super().__init__()
-        self.sequence_proj = nn.Linear(input_dim, input_dim)
+        self.dense = nn.Linear(input_dim, input_dim)
         self.layer_norm = nn.LayerNorm(input_dim)
         self.classifier = nn.Linear(input_dim, 5)  # 5 classes for A,T,G,C,N
     
     def forward(self, sequence_features, attention_mask=None, **kwargs):
-        """Forward pass that uses full sequence features"""
-        # Handle sequence-level features
-        sequence_features = self.sequence_proj(sequence_features)
+        """Process sequence-level features and output per-position predictions"""
+        # Handle the case when sequence_features is from pooled output
+        if len(sequence_features.shape) == 2:
+            if attention_mask is None:
+                raise ValueError("attention_mask required for sequence length reconstruction")
+            sequence_length = attention_mask.shape[1]
+            sequence_features = sequence_features.unsqueeze(1).expand(-1, sequence_length, -1)
+        
+        # Process features
+        sequence_features = self.dense(sequence_features)
         sequence_features = self.layer_norm(sequence_features)
-        logits = self.classifier(sequence_features)
+        logits = self.classifier(sequence_features)  # [batch_size, seq_length, num_classes]
         
         return logits
     
     def compute_loss(self, outputs, targets):
-        """Compute cross entropy loss with proper reshaping"""
-        # Ensure shapes match
+        """Compute cross entropy loss with shape checking"""
+        if len(outputs.shape) == 2:
+            # Handle case where outputs are [batch_size, num_classes]
+            outputs = outputs.unsqueeze(1)  # [batch_size, 1, num_classes]
+        
         batch_size, seq_length, num_classes = outputs.shape
         if targets.shape[1] != seq_length:
             targets = targets[:, :seq_length]
         
-        # Make tensors contiguous and reshape
         outputs = outputs.contiguous().view(-1, num_classes)
         targets = targets.contiguous().view(-1)
         
         return F.cross_entropy(outputs, targets)
-
-    def test(self, sequence_features, **kwargs):
-        """Test method for reverse complement prediction"""
-        with torch.no_grad():
-            return self.forward(sequence_features, **kwargs)
 
 class ReverseComplementTrainer(BaseTrainer):
     def __init__(self, *args, **kwargs):
@@ -152,11 +156,16 @@ class ReverseComplementTrainer(BaseTrainer):
         if labels is None:
             raise ValueError(f"No labels found in inputs. Keys: {inputs.keys()}")
         
-        # Forward pass
-        outputs = model(
+        # Get model outputs
+        backbone_output = model.backbone(
             input_ids=inputs["input_ids"],
-            attention_mask=inputs["attention_mask"]
+            attention_mask=inputs["attention_mask"],
+            output_hidden_states=True
         )
+        sequence_features = backbone_output.last_hidden_state
+        
+        # Get predictions from head
+        outputs = model.head(sequence_features, attention_mask=inputs["attention_mask"])
         
         # Ensure outputs and labels have matching sequence lengths
         seq_length = outputs.shape[1]
