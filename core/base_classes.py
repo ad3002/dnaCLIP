@@ -74,7 +74,7 @@ class BaseDNAModel(nn.Module):
         sequence_features = sequence_output[:, 0, :]
         
         # Pass through head
-        return self.head(sequence_features)
+        return self.head(sequence_features, attention_mask=attention_mask)
     
     def unfreeze(self):
         """Unfreeze the backbone parameters"""
