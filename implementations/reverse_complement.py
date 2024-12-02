@@ -111,14 +111,18 @@ class ReverseComplementHead(BaseHead):
         )
     
     def forward(self, sequence_features, **kwargs):
-        # Output shape: [batch_size, seq_length, 4]
-        return self.classifier(sequence_features)
+        """Forward pass reshaping output to [batch_size, seq_length, num_classes]"""
+        batch_size, seq_length, _ = sequence_features.shape
+        logits = self.classifier(sequence_features)  # [batch_size * seq_length, num_classes]
+        return logits.view(batch_size, seq_length, -1)  # reshape to [batch_size, seq_length, num_classes]
     
     def compute_loss(self, outputs, targets):
-        # Reshape for CrossEntropyLoss
-        outputs = outputs.view(-1, 4)  # [batch_size * seq_length, 4]
-        targets = targets.view(-1)      # [batch_size * seq_length]
-        return F.cross_entropy(outputs, targets)
+        """Compute cross entropy loss"""
+        batch_size, seq_length, num_classes = outputs.shape
+        return F.cross_entropy(
+            outputs.view(-1, num_classes),  # [batch_size * seq_length, num_classes]
+            targets.view(-1)                # [batch_size * seq_length]
+        )
     
     def test(self, sequence_features, **kwargs):
         """Test method for reverse complement prediction"""
@@ -155,6 +159,33 @@ class ReverseComplementTrainer(BaseTrainer):
             'position_accuracy': float(position_accuracy),
             'sequence_accuracy': float(sequence_accuracy)
         }
+
+    def compute_loss(self, model, inputs, return_outputs=False, **kwargs):
+        """Compute loss for reverse complement prediction"""
+        # Get the labels
+        labels = inputs.get("labels", None)
+        if labels is None:
+            labels = inputs.get("rev_comp_labels", None)
+        if labels is None:
+            raise ValueError(f"No labels found in inputs. Available keys: {inputs.keys()}")
+        
+        # Forward pass
+        outputs = model(
+            input_ids=inputs["input_ids"],
+            attention_mask=inputs["attention_mask"]
+        )
+        
+        # Compute loss
+        loss = model.head.compute_loss(outputs, labels)
+        
+        return (loss, outputs) if return_outputs else loss
+
+    def _prepare_inputs(self, inputs):
+        """Prepare inputs before compute_loss is called"""
+        prepared = super()._prepare_inputs(inputs)
+        if isinstance(inputs, dict) and "rev_comp_labels" in inputs:
+            prepared["labels"] = inputs["rev_comp_labels"]
+        return prepared
 
     def prediction_step(self, model, inputs, prediction_loss_only, ignore_keys=None):
         inputs = self._prepare_inputs(inputs)
