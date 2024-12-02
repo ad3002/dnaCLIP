@@ -5,7 +5,8 @@ import torch
 
 @dataclass
 class BaseDNADataCollator(DataCollatorWithPadding):
-    label_name: str
+    tokenizer: Any
+    label_name: str = "labels"
     label_type: torch.dtype = torch.float32  # Add support for different label types
     
     def __call__(self, features: List[Dict[str, Union[List[int], torch.Tensor]]]) -> Dict[str, torch.Tensor]:
@@ -44,9 +45,17 @@ class BaseDNADataCollator(DataCollatorWithPadding):
 @dataclass
 class ClassificationDataCollator(BaseDNADataCollator):
     def __init__(self, tokenizer: Any, label_name: str = "labels"):
-        super().__init__(tokenizer=tokenizer, label_name=label_name, label_type=torch.long)
+        super().__init__(
+            tokenizer=tokenizer,
+            label_name=label_name,
+            label_type=torch.long
+        )
 
 @dataclass
 class RegressionDataCollator(BaseDNADataCollator):
     def __init__(self, tokenizer: Any, label_name: str = "labels"):
-        super().__init__(tokenizer=tokenizer, label_name=label_name, label_type=torch.float32)
+        super().__init__(
+            tokenizer=tokenizer,
+            label_name=label_name,
+            label_type=torch.float32
+        )

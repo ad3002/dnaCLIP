@@ -1,3 +1,4 @@
+import trace
 import warnings
 warnings.filterwarnings('ignore', category=UserWarning)
 warnings.filterwarnings('ignore', category=FutureWarning)
@@ -11,12 +12,15 @@ from transformers import AutoTokenizer, AutoModel, DataCollatorWithPadding, Auto
 from dnaCLIP.core.base_classes import BaseDNAModel, BaseTrainer
 from dnaCLIP.core.registry import DNAModelRegistry
 from datasets import load_dataset
+import traceback
+
 
 import dnaCLIP.implementations.promoter_prediction
 import dnaCLIP.implementations.gc_content
 import dnaCLIP.implementations.tm_prediction
 import dnaCLIP.implementations.flexibility_prediction
 import dnaCLIP.implementations.bendability_prediction
+import dnaCLIP.implementations.taxonomy_classification
 
 def get_directory_size(path):
     """Calculate total size of a directory in GB"""
@@ -72,7 +76,7 @@ def list_implementations():
         print(f"  Trainer: {components['trainer']}")
     print("\n")
 
-def create_model(implementation: str, model_name: str, dataset_name: str, num_epochs: int = 10, frozen: bool = False):
+def create_model(implementation: str, model_name: str, dataset_name: str, num_epochs: int = 10, frozen: bool = False, save_checkpoints: bool = True):
     # Get implementation components from registry
     head_class, generator_class, trainer_class, test_method = DNAModelRegistry.get_implementation(implementation)
     
@@ -114,7 +118,8 @@ def create_model(implementation: str, model_name: str, dataset_name: str, num_ep
     # Create trainer with default arguments
     training_args = BaseTrainer.get_default_args(
         f"outputs/{implementation}",
-        num_train_epochs=num_epochs
+        num_train_epochs=num_epochs,
+        save_checkpoints=save_checkpoints
     )
     trainer = trainer_class(
         model=model,
@@ -126,6 +131,55 @@ def create_model(implementation: str, model_name: str, dataset_name: str, num_ep
     )
     
     return model, tokenizer, trainer, data_generator, tokenized_dataset, test_method
+
+def run_pipeline(
+    implementation: str,
+    model_name: str = "AIRI-Institute/gena-lm-bert-base-t2t-multi",
+    dataset_name: str = "yurakuratov/example_promoters_300",
+    num_epochs: int = 10,
+    frozen: bool = False,
+    save_checkpoints: bool = True,
+    output_dir: str = None
+) -> tuple:
+    """
+    Run the DNA analysis pipeline programmatically
+    
+    Returns:
+        tuple: (model, tokenizer, trainer, test_results)
+    """
+    if not output_dir:
+        output_dir = f"outputs/{implementation}"
+        
+    # Check disk space before proceeding
+    if not check_disk_space(output_dir):
+        raise RuntimeError("Insufficient disk space")
+    
+    # Create model, trainer and prepare dataset
+    model, tokenizer, trainer, data_generator, tokenized_dataset, test_method = create_model(
+        implementation, 
+        model_name,
+        dataset_name,
+        num_epochs,
+        frozen,
+        save_checkpoints
+    )
+    
+    # Train model
+    train_results = trainer.train()
+    
+    # Run tests
+    test_results = None
+    if test_method:
+        print("\nRunning implementation-specific tests...")
+        test_results = test_method(model, tokenized_dataset["test"], tokenizer)
+    elif hasattr(trainer, 'test_model'):
+        print("\nRunning trainer's test method...")
+        test_results = trainer.test_model(tokenized_dataset["test"])
+    
+    # Save the model
+    trainer.save_model(f"{output_dir}/final")
+    
+    return model, tokenizer, trainer, test_results
 
 def main():
     parser = argparse.ArgumentParser(description='DNA Analysis CLI')
@@ -141,6 +195,8 @@ def main():
                        help='Number of training epochs')
     parser.add_argument('--frozen', action='store_true',
                        help='Freeze BERT backbone weights during training')
+    parser.add_argument('--nocheckpoints', action='store_true',
+                       help='Disable saving of checkpoints during training')
     args = parser.parse_args()
     
     if args.list:
@@ -151,33 +207,19 @@ def main():
         print("Please specify an implementation with --implementation or use --list to see available options")
         return
     
-    # Check disk space before proceeding
-    output_dir = f"outputs/{args.implementation}"
-    if not check_disk_space(output_dir):
+    try:
+        model, tokenizer, trainer, test_results = run_pipeline(
+            implementation=args.implementation,
+            model_name=args.model,
+            dataset_name=args.dataset,
+            num_epochs=args.epochs,
+            frozen=args.frozen,
+            save_checkpoints=not args.nocheckpoints
+        )
+    except Exception as e:
+        print(traceback.format_exc())
+        print(f"Error running pipeline: {str(e)}")
         return
-    
-    # Create model, trainer and prepare dataset
-    model, tokenizer, trainer, data_generator, tokenized_dataset, test_method = create_model(
-        args.implementation, 
-        args.model,
-        args.dataset,
-        args.epochs,
-        args.frozen
-    )
-    
-    # Train model
-    trainer.train()
-    
-    # Run tests
-    if test_method:
-        print("\nRunning implementation-specific tests...")
-        test_method(model, tokenized_dataset["test"], tokenizer)
-    elif hasattr(trainer, 'test_model'):
-        print("\nRunning trainer's test method...")
-        trainer.test_model(tokenized_dataset["test"])
-    
-    # Save the model
-    trainer.save_model(f"outputs/{args.implementation}/final")
 
 if __name__ == "__main__":
     main()

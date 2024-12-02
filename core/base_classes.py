@@ -118,7 +118,7 @@ class BaseTrainer(Trainer):
         pass
     
     @staticmethod
-    def get_default_args(output_dir: str, num_train_epochs: int = 10) -> TrainingArguments:
+    def get_default_args(output_dir: str, num_train_epochs: int = 10, save_checkpoints: bool = True) -> TrainingArguments:
         """Get default training arguments"""
         return TrainingArguments(
             output_dir=output_dir,
@@ -131,9 +131,9 @@ class BaseTrainer(Trainer):
             per_device_eval_batch_size=32,
             num_train_epochs=num_train_epochs,
             eval_strategy="epoch",
-            save_strategy="epoch",
+            save_strategy="epoch" if save_checkpoints else "no",
             logging_strategy="epoch",
-            load_best_model_at_end=True,
+            load_best_model_at_end=save_checkpoints,
             save_safetensors=False,
             push_to_hub=False,
             report_to="none"
