@@ -102,51 +102,40 @@ class ReverseComplementDataGenerator(BaseDataGenerator):
 class ReverseComplementHead(BaseHead):
     def __init__(self, input_dim=768):
         super().__init__()
-        self.projector = nn.Linear(input_dim, input_dim)  # Project pooled output back to sequence length
-        self.classifier = nn.Sequential(
-            nn.Linear(input_dim, 256),
-            nn.GELU(),
-            nn.LayerNorm(256),
-            nn.Dropout(0.1),
-            nn.Linear(256, 5)  # 5 classes for A,T,G,C,N
-        )
+        self.dense = nn.Linear(input_dim, input_dim)
+        self.layer_norm = nn.LayerNorm(input_dim)
+        self.classifier = nn.Linear(input_dim, 5)  # 5 classes for A,T,G,C,N
     
     def forward(self, sequence_features, attention_mask=None, **kwargs):
-        """Forward pass handling both sequence-level and pooled features"""
+        # Handle pooled features case (when sequence_features is [batch_size, hidden_dim])
         if len(sequence_features.shape) == 2:
-            # If we get [batch_size, hidden_dim], we need attention mask for seq length
             if attention_mask is None:
-                raise ValueError("attention_mask required for sequence length when using pooled features")
+                raise ValueError("attention_mask required for sequence length reconstruction")
             
-            batch_size, hidden_dim = sequence_features.shape
-            seq_length = attention_mask.size(1)
-            
-            # Project and expand
-            projected = self.projector(sequence_features)
-            sequence_features = projected.unsqueeze(1).expand(-1, seq_length, -1)
+            # Project pooled features back to sequence length
+            sequence_features = self.dense(sequence_features)  # [batch_size, hidden_dim]
+            sequence_features = sequence_features.unsqueeze(1)  # [batch_size, 1, hidden_dim]
+            sequence_length = attention_mask.sum(dim=1).max().item()
+            sequence_features = sequence_features.expand(-1, sequence_length, -1)  # [batch_size, seq_len, hidden_dim]
         
-        # Now proceed with classification
-        batch_size, seq_length, hidden_dim = sequence_features.shape
-        flat_features = sequence_features.reshape(-1, hidden_dim)
-        logits = self.classifier(flat_features)
-        return logits.reshape(batch_size, seq_length, -1)
+        # Apply layer norm and classification
+        sequence_features = self.layer_norm(sequence_features)
+        logits = self.classifier(sequence_features)  # [batch_size, seq_len, num_classes]
+        
+        return logits
     
     def compute_loss(self, outputs, targets):
-        """Compute cross entropy loss"""
-        # outputs shape: [batch_size, seq_length, num_classes]
-        # targets shape: [batch_size, seq_length]
+        # Ensure shapes match
         batch_size, seq_length, num_classes = outputs.shape
+        if targets.shape[1] != seq_length:
+            # Truncate targets to match sequence length if necessary
+            targets = targets[:, :seq_length]
         
         # Reshape for cross entropy
-        outputs = outputs.reshape(-1, num_classes)  # [batch_size * seq_length, num_classes]
-        targets = targets.reshape(-1)  # [batch_size * seq_length]
+        outputs = outputs.view(-1, num_classes)  # [batch_size * seq_length, num_classes]
+        targets = targets.view(-1)  # [batch_size * seq_length]
         
         return F.cross_entropy(outputs, targets)
-    
-    def test(self, sequence_features, **kwargs):
-        """Test method for reverse complement prediction"""
-        with torch.no_grad():
-            return self.forward(sequence_features, **kwargs)
 
 class ReverseComplementTrainer(BaseTrainer):
     def __init__(self, *args, **kwargs):
@@ -162,17 +151,20 @@ class ReverseComplementTrainer(BaseTrainer):
         super().__init__(*args, **kwargs)
 
     def compute_loss(self, model, inputs, return_outputs=False, **kwargs):
-        """Compute loss with inputs properly forwarded to head"""
-        # Get and validate labels
+        """Compute loss with proper shape handling"""
         labels = inputs.get("labels", inputs.get("rev_comp_labels"))
         if labels is None:
             raise ValueError(f"No labels found in inputs. Keys: {inputs.keys()}")
         
-        # Forward pass with all necessary inputs
+        # Forward pass
         outputs = model(
             input_ids=inputs["input_ids"],
             attention_mask=inputs["attention_mask"]
         )
+        
+        # Ensure outputs and labels have matching sequence lengths
+        seq_length = outputs.shape[1]
+        labels = labels[:, :seq_length]
         
         # Compute loss
         loss = model.head.compute_loss(outputs, labels)
@@ -189,6 +181,7 @@ class ReverseComplementTrainer(BaseTrainer):
         return prepared
 
     def prediction_step(self, model, inputs, prediction_loss_only, ignore_keys=None):
+        """Custom prediction step with shape handling"""
         inputs = self._prepare_inputs(inputs)
         labels = inputs["rev_comp_labels"]
         
@@ -197,6 +190,11 @@ class ReverseComplementTrainer(BaseTrainer):
                 input_ids=inputs["input_ids"],
                 attention_mask=inputs["attention_mask"]
             )
+            
+            # Ensure outputs and labels have matching sequence lengths
+            seq_length = outputs.shape[1]
+            labels = labels[:, :seq_length]
+            
             loss = model.head.compute_loss(outputs, labels)
             
         return (loss.detach(), outputs.detach(), labels)
