@@ -229,7 +229,7 @@ class ReverseComplementTrainer(BaseTrainer):
         }
 
     def test_model(self, test_dataset, num_examples=10):
-        """Test reverse complement prediction model"""
+        """Test reverse complement prediction model with proper batch padding"""
         model = self.model.eval()
         all_predictions = []
         all_labels = []
@@ -239,11 +239,21 @@ class ReverseComplementTrainer(BaseTrainer):
         for i in range(0, len(test_dataset), self.args.per_device_eval_batch_size):
             batch = test_dataset[i:i+self.args.per_device_eval_batch_size]
             
-            # Convert inputs to proper tensor format
+            # Create list of features for the data collator
+            features = [{
+                'input_ids': batch['input_ids'][j],
+                'attention_mask': batch['attention_mask'][j],
+                'rev_comp_labels': batch['rev_comp_labels'][j]
+            } for j in range(len(batch['input_ids']))]
+            
+            # Use data collator to properly pad the batch
+            padded_batch = self.data_collator(features)
+            
+            # Move tensors to device
             inputs = {
-                "input_ids": torch.tensor(batch["input_ids"], device=device),
-                "attention_mask": torch.tensor(batch["attention_mask"], device=device),
-                "rev_comp_labels": torch.tensor(batch["rev_comp_labels"], device=device)
+                "input_ids": padded_batch["input_ids"].to(device),
+                "attention_mask": padded_batch["attention_mask"].to(device),
+                "rev_comp_labels": padded_batch["labels"].to(device)
             }
             
             with torch.no_grad():
@@ -259,14 +269,16 @@ class ReverseComplementTrainer(BaseTrainer):
                 for seq in batch["input_ids"]
             ]
             
-            # Move tensors to CPU and convert to numpy
-            predictions = predictions.cpu().numpy()
-            labels = inputs["rev_comp_labels"].cpu().numpy()
+            # Use attention mask to mask out padding predictions
+            mask = inputs["attention_mask"].bool()
+            predictions = predictions[mask].cpu().numpy()
+            labels = inputs["rev_comp_labels"][mask].cpu().numpy()
             
             all_predictions.extend(predictions)
             all_labels.extend(labels)
             all_sequences.extend(sequences)
         
+        # Convert to numpy arrays
         all_predictions = np.array(all_predictions)
         all_labels = np.array(all_labels)
         
@@ -286,12 +298,15 @@ class ReverseComplementTrainer(BaseTrainer):
             indices = np.random.choice(len(all_sequences), min(num_examples, len(all_sequences)), replace=False)
             for idx in indices:
                 orig_seq = all_sequences[idx]
-                pred_seq = self._indices_to_sequence(all_predictions[idx])
-                actual_seq = self._indices_to_sequence(all_labels[idx])
+                pred_tokens = predictions[idx] if idx < len(predictions) else []
+                actual_tokens = all_labels[idx] if idx < len(all_labels) else []
+                
+                pred_seq = self._indices_to_sequence(pred_tokens)
+                actual_seq = self._indices_to_sequence(actual_tokens)
                 print(f"{orig_seq[:20]}...\t{pred_seq[:20]}...\t{actual_seq[:20]}...")
         
         return metrics
-    
+
     def get_test_metrics(self, predictions, labels):
         """Calculate reverse complement specific metrics"""
         # Calculate position-wise accuracy
