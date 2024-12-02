@@ -136,6 +136,14 @@ class ReverseComplementHead(BaseHead):
         targets = targets.contiguous().view(-1)
         
         return F.cross_entropy(outputs, targets)
+    
+    def test(self, sequence_features, attention_mask=None, **kwargs):
+        """Test method for reverse complement prediction"""
+        with torch.no_grad():
+            # Forward pass with no gradient computation
+            logits = self.forward(sequence_features, attention_mask=attention_mask)
+            predictions = logits.argmax(dim=-1)
+            return predictions
 
 class ReverseComplementTrainer(BaseTrainer):
     def __init__(self, *args, **kwargs):
