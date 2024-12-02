@@ -162,21 +162,23 @@ class ReverseComplementTrainer(BaseTrainer):
         super().__init__(*args, **kwargs)
 
     def compute_loss(self, model, inputs, return_outputs=False, **kwargs):
-        """Compute loss ensuring all necessary inputs are passed to the model"""
-        # Forward pass with all inputs
+        """Compute loss ensuring proper input handling"""
+        # Forward pass with only necessary inputs
         outputs = model(
             input_ids=inputs["input_ids"],
-            attention_mask=inputs["attention_mask"],
-            # Pass all inputs as kwargs to ensure they reach the head
-            **inputs
+            attention_mask=inputs["attention_mask"]
         )
         
-        # Get labels
+        # Get and validate labels
         labels = inputs.get("labels")
         if labels is None:
             labels = inputs.get("rev_comp_labels")
         if labels is None:
             raise ValueError(f"No labels found in inputs. Keys: {inputs.keys()}")
+        
+        # Pass attention_mask to head's forward method through model's forward
+        if hasattr(model, 'head'):
+            outputs = model.head(outputs, attention_mask=inputs["attention_mask"])
         
         # Compute loss
         loss = model.head.compute_loss(outputs, labels)
