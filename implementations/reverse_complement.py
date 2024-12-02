@@ -102,6 +102,7 @@ class ReverseComplementDataGenerator(BaseDataGenerator):
 class ReverseComplementHead(BaseHead):
     def __init__(self, input_dim=768):
         super().__init__()
+        self.projector = nn.Linear(input_dim, input_dim)  # Project pooled output back to sequence length
         self.classifier = nn.Sequential(
             nn.Linear(input_dim, 256),
             nn.GELU(),
@@ -111,12 +112,24 @@ class ReverseComplementHead(BaseHead):
         )
     
     def forward(self, sequence_features, **kwargs):
-        """Forward pass for reverse complement prediction"""
+        """Forward pass handling the BERT output format"""
+        if len(sequence_features.shape) == 2:
+            # If we get [batch_size, hidden_dim], we need to expand it
+            batch_size, hidden_dim = sequence_features.shape
+            # Get sequence length from the input_ids in kwargs
+            input_ids = kwargs.get('input_ids')
+            if input_ids is None:
+                raise ValueError("input_ids required for sequence length")
+            seq_length = input_ids.size(1)
+            
+            # Project and expand
+            projected = self.projector(sequence_features)  # [batch_size, hidden_dim]
+            sequence_features = projected.unsqueeze(1).expand(-1, seq_length, -1)  # [batch_size, seq_length, hidden_dim]
+        
+        # Now proceed with classification
         batch_size, seq_length, hidden_dim = sequence_features.shape
-        # Reshape and apply classifier
         flat_features = sequence_features.reshape(-1, hidden_dim)
         logits = self.classifier(flat_features)
-        # Reshape back to [batch_size, seq_length, num_classes]
         return logits.reshape(batch_size, seq_length, -1)
     
     def compute_loss(self, outputs, targets):
@@ -150,8 +163,7 @@ class ReverseComplementTrainer(BaseTrainer):
         super().__init__(*args, **kwargs)
 
     def compute_loss(self, model, inputs, return_outputs=False, **kwargs):
-        """Compute loss ensuring proper shape handling"""
-        # Forward pass
+        """Compute loss with additional input_ids passed to head"""
         outputs = model(
             input_ids=inputs["input_ids"],
             attention_mask=inputs["attention_mask"]
@@ -163,10 +175,12 @@ class ReverseComplementTrainer(BaseTrainer):
             labels = inputs.get("rev_comp_labels")
         if labels is None:
             raise ValueError(f"No labels found in inputs. Keys: {inputs.keys()}")
-            
-        # Compute loss
-        loss = model.head.compute_loss(outputs, labels)
         
+        # Pass input_ids to forward method for sequence length
+        if hasattr(outputs, 'forward'):
+            outputs = outputs.forward(input_ids=inputs["input_ids"])
+        
+        loss = model.head.compute_loss(outputs, labels)
         return (loss, outputs) if return_outputs else loss
 
     def _prepare_inputs(self, inputs):
