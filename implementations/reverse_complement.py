@@ -286,8 +286,19 @@ class ReverseComplementTrainer(BaseTrainer):
                     output_hidden_states=True
                 )
                 
-                # Use last hidden state for sequence prediction
-                sequence_features = backbone_output.last_hidden_state
+                # Handle different types of backbone outputs
+                if hasattr(backbone_output, 'hidden_states'):
+                    sequence_features = backbone_output.hidden_states[-1]
+                elif hasattr(backbone_output, 'last_hidden_state'):
+                    sequence_features = backbone_output.last_hidden_state
+                elif isinstance(backbone_output, dict):
+                    sequence_features = backbone_output.get('last_hidden_state', 
+                                                        backbone_output.get('hidden_states', [-1])[-1])
+                elif isinstance(backbone_output, tuple):
+                    sequence_features = backbone_output[0]
+                else:
+                    # For MaskedLMOutput, use the hidden states
+                    sequence_features = backbone_output[2][-1]  # Get last hidden state from hidden_states tuple
                 
                 # Get head outputs
                 outputs = model.head(sequence_features)
