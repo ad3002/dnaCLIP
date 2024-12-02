@@ -72,7 +72,7 @@ def list_implementations():
         print(f"  Trainer: {components['trainer']}")
     print("\n")
 
-def create_model(implementation: str, model_name: str, dataset_name: str, num_epochs: int = 10, frozen: bool = False):
+def create_model(implementation: str, model_name: str, dataset_name: str, num_epochs: int = 10, frozen: bool = False, nocheckpoint: bool = False):
     # Get implementation components from registry
     head_class, generator_class, trainer_class, test_method = DNAModelRegistry.get_implementation(implementation)
     
@@ -114,7 +114,8 @@ def create_model(implementation: str, model_name: str, dataset_name: str, num_ep
     # Create trainer with default arguments
     training_args = BaseTrainer.get_default_args(
         f"outputs/{implementation}",
-        num_train_epochs=num_epochs
+        num_train_epochs=num_epochs,
+        nocheckpoint=nocheckpoint
     )
     trainer = trainer_class(
         model=model,
@@ -141,6 +142,8 @@ def main():
                        help='Number of training epochs')
     parser.add_argument('--frozen', action='store_true',
                        help='Freeze BERT backbone weights during training')
+    parser.add_argument('--nocheckpoints', action='store_true',
+                       help='Disable model checkpointing during training')
     args = parser.parse_args()
     
     if args.list:
@@ -162,7 +165,8 @@ def main():
         args.model,
         args.dataset,
         args.epochs,
-        args.frozen
+        args.frozen,
+        args.nocheckpoints
     )
     
     # Train model
