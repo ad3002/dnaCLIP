@@ -131,49 +131,32 @@ class ReverseComplementHead(BaseHead):
 
 class ReverseComplementTrainer(BaseTrainer):
     def __init__(self, *args, **kwargs):
+        training_args = kwargs.get('args', None)
+        if training_args:
+            # Ensure label_names is set correctly
+            training_args.label_names = ["rev_comp_labels"]
+            
+        # Set compute_metrics before parent initialization
         if 'compute_metrics' not in kwargs:
             kwargs['compute_metrics'] = self.compute_metrics
+            
         super().__init__(*args, **kwargs)
-    
-    @staticmethod
-    def get_default_args(output_dir: str) -> TrainingArguments:
-        args = BaseTrainer.get_default_args(output_dir)
-        args.label_names = ["rev_comp_labels"]
-        args.metric_for_best_model = "eval_sequence_accuracy"
-        args.greater_is_better = True
-        return args
-    
-    @staticmethod
-    def compute_metrics(eval_pred):
-        predictions, labels = eval_pred
-        predictions = predictions.argmax(-1)
-        
-        # Calculate position-wise accuracy
-        position_accuracy = (predictions == labels).mean()
-        
-        # Calculate sequence-wise accuracy
-        sequence_matches = (predictions == labels).all(axis=1)
-        sequence_accuracy = sequence_matches.mean()
-        
-        return {
-            'position_accuracy': float(position_accuracy),
-            'sequence_accuracy': float(sequence_accuracy)
-        }
 
     def compute_loss(self, model, inputs, return_outputs=False, **kwargs):
-        """Compute loss for reverse complement prediction"""
-        # Get the labels
-        labels = inputs.get("labels", None)
-        if labels is None:
-            labels = inputs.get("rev_comp_labels", None)
-        if labels is None:
-            raise ValueError(f"No labels found in inputs. Available keys: {inputs.keys()}")
+        # Convert inputs to dict if it's not already
+        if not isinstance(inputs, dict):
+            inputs = {k: v for k, v in inputs.items()}
         
         # Forward pass
         outputs = model(
             input_ids=inputs["input_ids"],
             attention_mask=inputs["attention_mask"]
         )
+        
+        # Get labels
+        labels = inputs.get("labels", None)
+        if labels is None:
+            raise ValueError(f"No labels found in inputs. Keys: {inputs.keys()}")
         
         # Compute loss
         loss = model.head.compute_loss(outputs, labels)
@@ -199,6 +182,31 @@ class ReverseComplementTrainer(BaseTrainer):
             loss = model.head.compute_loss(outputs, labels)
             
         return (loss.detach(), outputs.detach(), labels)
+
+    @staticmethod
+    def get_default_args(output_dir: str) -> TrainingArguments:
+        args = BaseTrainer.get_default_args(output_dir)
+        args.label_names = ["rev_comp_labels"]
+        args.metric_for_best_model = "eval_sequence_accuracy"
+        args.greater_is_better = True
+        return args
+    
+    @staticmethod
+    def compute_metrics(eval_pred):
+        predictions, labels = eval_pred
+        predictions = predictions.argmax(-1)
+        
+        # Calculate position-wise accuracy
+        position_accuracy = (predictions == labels).mean()
+        
+        # Calculate sequence-wise accuracy
+        sequence_matches = (predictions == labels).all(axis=1)
+        sequence_accuracy = sequence_matches.mean()
+        
+        return {
+            'position_accuracy': float(position_accuracy),
+            'sequence_accuracy': float(sequence_accuracy)
+        }
 
 # Register implementation
 DNAModelRegistry.register(
