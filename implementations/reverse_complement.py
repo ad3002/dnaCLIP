@@ -111,27 +111,25 @@ class ReverseComplementHead(BaseHead):
         )
     
     def forward(self, sequence_features, **kwargs):
-        """Forward pass handling both sequence-level and token-level features"""
-        # Handle both cases: [batch_size, hidden_dim] and [batch_size, seq_length, hidden_dim]
-        if len(sequence_features.shape) == 2:
-            batch_size, hidden_dim = sequence_features.shape
-            # Assume single token for sequence-level features
-            logits = self.classifier(sequence_features)  # [batch_size, num_classes]
-            return logits.unsqueeze(1)  # [batch_size, 1, num_classes]
-        else:
-            batch_size, seq_length, _ = sequence_features.shape
-            # Reshape for efficiency
-            flat_features = sequence_features.view(-1, sequence_features.size(-1))
-            logits = self.classifier(flat_features)
-            return logits.view(batch_size, seq_length, -1)
+        """Forward pass for reverse complement prediction"""
+        batch_size, seq_length, hidden_dim = sequence_features.shape
+        # Reshape and apply classifier
+        flat_features = sequence_features.reshape(-1, hidden_dim)
+        logits = self.classifier(flat_features)
+        # Reshape back to [batch_size, seq_length, num_classes]
+        return logits.reshape(batch_size, seq_length, -1)
     
     def compute_loss(self, outputs, targets):
-        """Compute cross entropy loss for any input shape"""
-        num_classes = outputs.size(-1)
-        return F.cross_entropy(
-            outputs.view(-1, num_classes),
-            targets.view(-1)
-        )
+        """Compute cross entropy loss"""
+        # outputs shape: [batch_size, seq_length, num_classes]
+        # targets shape: [batch_size, seq_length]
+        batch_size, seq_length, num_classes = outputs.shape
+        
+        # Reshape for cross entropy
+        outputs = outputs.reshape(-1, num_classes)  # [batch_size * seq_length, num_classes]
+        targets = targets.reshape(-1)  # [batch_size * seq_length]
+        
+        return F.cross_entropy(outputs, targets)
     
     def test(self, sequence_features, **kwargs):
         """Test method for reverse complement prediction"""
@@ -152,31 +150,32 @@ class ReverseComplementTrainer(BaseTrainer):
         super().__init__(*args, **kwargs)
 
     def compute_loss(self, model, inputs, return_outputs=False, **kwargs):
-        # Convert inputs to dict if it's not already
-        if not isinstance(inputs, dict):
-            inputs = {k: v for k, v in inputs.items()}
-        
+        """Compute loss ensuring proper shape handling"""
         # Forward pass
         outputs = model(
             input_ids=inputs["input_ids"],
             attention_mask=inputs["attention_mask"]
         )
         
-        # Get labels
-        labels = inputs.get("labels", None)
+        # Get labels and ensure proper shape
+        labels = inputs.get("labels")
+        if labels is None:
+            labels = inputs.get("rev_comp_labels")
         if labels is None:
             raise ValueError(f"No labels found in inputs. Keys: {inputs.keys()}")
-        
+            
         # Compute loss
         loss = model.head.compute_loss(outputs, labels)
         
         return (loss, outputs) if return_outputs else loss
 
     def _prepare_inputs(self, inputs):
-        """Prepare inputs before compute_loss is called"""
+        """Prepare inputs ensuring label consistency"""
         prepared = super()._prepare_inputs(inputs)
-        if isinstance(inputs, dict) and "rev_comp_labels" in inputs:
-            prepared["labels"] = inputs["rev_comp_labels"]
+        if isinstance(inputs, dict):
+            if "rev_comp_labels" in inputs:
+                # Keep original shape of labels
+                prepared["labels"] = inputs["rev_comp_labels"]
         return prepared
 
     def prediction_step(self, model, inputs, prediction_loss_only, ignore_keys=None):
