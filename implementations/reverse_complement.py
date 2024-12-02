@@ -111,20 +111,19 @@ class ReverseComplementHead(BaseHead):
             nn.Linear(256, 5)  # 5 classes for A,T,G,C,N
         )
     
-    def forward(self, sequence_features, **kwargs):
-        """Forward pass handling the BERT output format"""
+    def forward(self, sequence_features, attention_mask=None, **kwargs):
+        """Forward pass handling both sequence-level and pooled features"""
         if len(sequence_features.shape) == 2:
-            # If we get [batch_size, hidden_dim], we need to expand it
+            # If we get [batch_size, hidden_dim], we need attention mask for seq length
+            if attention_mask is None:
+                raise ValueError("attention_mask required for sequence length when using pooled features")
+            
             batch_size, hidden_dim = sequence_features.shape
-            # Get sequence length from the input_ids in kwargs
-            input_ids = kwargs.get('input_ids')
-            if input_ids is None:
-                raise ValueError("input_ids required for sequence length")
-            seq_length = input_ids.size(1)
+            seq_length = attention_mask.size(1)
             
             # Project and expand
-            projected = self.projector(sequence_features)  # [batch_size, hidden_dim]
-            sequence_features = projected.unsqueeze(1).expand(-1, seq_length, -1)  # [batch_size, seq_length, hidden_dim]
+            projected = self.projector(sequence_features)
+            sequence_features = projected.unsqueeze(1).expand(-1, seq_length, -1)
         
         # Now proceed with classification
         batch_size, seq_length, hidden_dim = sequence_features.shape
@@ -163,24 +162,25 @@ class ReverseComplementTrainer(BaseTrainer):
         super().__init__(*args, **kwargs)
 
     def compute_loss(self, model, inputs, return_outputs=False, **kwargs):
-        """Compute loss with additional input_ids passed to head"""
+        """Compute loss ensuring all necessary inputs are passed to the model"""
+        # Forward pass with all inputs
         outputs = model(
             input_ids=inputs["input_ids"],
-            attention_mask=inputs["attention_mask"]
+            attention_mask=inputs["attention_mask"],
+            # Pass all inputs as kwargs to ensure they reach the head
+            **inputs
         )
         
-        # Get labels and ensure proper shape
+        # Get labels
         labels = inputs.get("labels")
         if labels is None:
             labels = inputs.get("rev_comp_labels")
         if labels is None:
             raise ValueError(f"No labels found in inputs. Keys: {inputs.keys()}")
         
-        # Pass input_ids to forward method for sequence length
-        if hasattr(outputs, 'forward'):
-            outputs = outputs.forward(input_ids=inputs["input_ids"])
-        
+        # Compute loss
         loss = model.head.compute_loss(outputs, labels)
+        
         return (loss, outputs) if return_outputs else loss
 
     def _prepare_inputs(self, inputs):
