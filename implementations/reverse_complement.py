@@ -1,4 +1,3 @@
-
 from dnaCLIP.core.base_classes import BaseDataGenerator, BaseHead, BaseTrainer
 from dnaCLIP.core.registry import DNAModelRegistry
 import torch.nn as nn
@@ -97,6 +96,11 @@ class ReverseComplementHead(BaseHead):
         outputs = outputs.view(-1, 4)  # [batch_size * seq_length, 4]
         targets = targets.view(-1)      # [batch_size * seq_length]
         return F.cross_entropy(outputs, targets)
+    
+    def test(self, sequence_features, **kwargs):
+        """Test method for reverse complement prediction"""
+        with torch.no_grad():
+            return self.forward(sequence_features, **kwargs)
 
 class ReverseComplementTrainer(BaseTrainer):
     def __init__(self, *args, **kwargs):
