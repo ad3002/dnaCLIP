@@ -357,7 +357,12 @@ class ReverseComplementTrainer(BaseTrainer):
                 actual_last5 = actual_seq[-5:] if len(actual_seq) > 5 else ""
                 
                 # print(f"{orig_first5}...{orig_last5}\t{pred_first5}...{pred_last5}\t{actual_first5}...{actual_last5}")
-                print(f"{orig_seq}\t{pred_seq}\t{actual_seq}")
+                
+                print(f"ORIG: {orig_seq}")
+                print(f"PRED: {pred_seq}")
+                print(f"ACTU: {actual_seq}")
+                      
+                      
         
         return metrics
     
