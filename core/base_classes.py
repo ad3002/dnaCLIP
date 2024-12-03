@@ -136,5 +136,5 @@ class BaseTrainer(Trainer):
             load_best_model_at_end=not nocheckpoint,
             save_safetensors=False,
             push_to_hub=False,
-            report_to="none"
+            report_to=["wandb"] if not nocheckpoint else "none"  # Changed this line only
         )

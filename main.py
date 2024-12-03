@@ -5,8 +5,9 @@ warnings.filterwarnings('ignore', category=FutureWarning)
 import torch
 import argparse
 import os
-import shutil  # Add this import
-from pathlib import Path  # Add this import
+import wandb  # Add this import
+import shutil
+from pathlib import Path
 from transformers import AutoTokenizer, AutoModel, DataCollatorWithPadding, AutoConfig
 from dnaCLIP.core.base_classes import BaseDNAModel, BaseTrainer
 from dnaCLIP.core.registry import DNAModelRegistry
@@ -145,6 +146,10 @@ def main():
                        help='Freeze BERT backbone weights during training')
     parser.add_argument('--nocheckpoints', action='store_true',
                        help='Disable model checkpointing during training')
+    parser.add_argument('--wandb_project', type=str, default='dnaCLIP',
+                       help='Weights & Biases project name')
+    parser.add_argument('--wandb_entity', type=str, default=None,
+                       help='Weights & Biases entity (username or team name)')
     args = parser.parse_args()
     
     if args.list:
@@ -154,6 +159,20 @@ def main():
     if not args.implementation:
         print("Please specify an implementation with --implementation or use --list to see available options")
         return
+    
+    # Initialize wandb
+    if not args.nocheckpoints:
+        wandb.init(
+            project=args.wandb_project,
+            entity=args.wandb_entity,
+            config={
+                "implementation": args.implementation,
+                "model": args.model,
+                "dataset": args.dataset,
+                "epochs": args.epochs,
+                "frozen": args.frozen
+            }
+        )
     
     # Check disk space before proceeding
     output_dir = f"outputs/{args.implementation}"
@@ -183,6 +202,10 @@ def main():
     
     # Save the model
     trainer.save_model(f"outputs/{args.implementation}/final")
+    
+    # Close wandb run
+    if not args.nocheckpoints:
+        wandb.finish()
 
 if __name__ == "__main__":
     main()
