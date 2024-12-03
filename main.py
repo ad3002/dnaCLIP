@@ -135,7 +135,7 @@ def main():
     parser.add_argument('-i', '--implementation', type=str, help='Implementation name')
     parser.add_argument('--list', action='store_true', help='List available implementations')
     parser.add_argument('--model', type=str, 
-                       default="AIRI-Institute/gena-lm-bert-base-t2t-multi",
+                       default="AIRI-Institute/gena-lm-bert-large-t2t",
                        help='Model name')
     parser.add_argument('--dataset', type=str,
                        default="yurakuratov/example_promoters_300",
