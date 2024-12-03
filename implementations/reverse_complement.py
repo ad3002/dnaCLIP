@@ -387,6 +387,30 @@ class ReverseComplementTrainer(BaseTrainer):
         """Convert numerical indices back to nucleotide sequence"""
         return ''.join(IDX_TO_NUCLEOTIDE.get(idx, 'N') for idx in indices)
 
+    def show_training_examples(self, dataset, num_examples=10):
+        """Show examples of input sequences and their reverse complements"""
+        print("\nTraining Examples:")
+        print("Original Sequence\tReverse Complement")
+        print("-" * 60)
+        
+        # Get random indices
+        indices = np.random.choice(len(dataset), min(num_examples, len(dataset)), replace=False)
+        
+        for idx in indices:
+            example = dataset[idx]
+            # Get original sequence
+            orig_seq = self.processing_class.decode(example['input_ids'], skip_special_tokens=True)
+            # Get reverse complement from labels
+            rev_comp = ''.join(IDX_TO_NUCLEOTIDE[idx] for idx in example['rev_comp_labels'])
+            print(f"{orig_seq}\t{rev_comp}")
+        print()
+
+    def train(self, *args, **kwargs):
+        """Override train method to show examples before training"""
+        if self.train_dataset is not None:
+            self.show_training_examples(self.train_dataset)
+        return super().train(*args, **kwargs)
+
 # Register implementation
 DNAModelRegistry.register(
     "reverse_complement",
