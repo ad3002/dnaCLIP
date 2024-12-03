@@ -393,15 +393,16 @@ class ReverseComplementTrainer(BaseTrainer):
         print("Original Sequence\tReverse Complement")
         print("-" * 60)
         
-        # Get random indices
+        # Get random indices and convert to Python int
         indices = np.random.choice(len(dataset), min(num_examples, len(dataset)), replace=False)
+        indices = [int(idx) for idx in indices]  # Convert np.int64 to Python int
         
         for idx in indices:
             example = dataset[idx]
             # Get original sequence
             orig_seq = self.processing_class.decode(example['input_ids'], skip_special_tokens=True)
             # Get reverse complement from labels
-            rev_comp = ''.join(IDX_TO_NUCLEOTIDE[idx] for idx in example['rev_comp_labels'])
+            rev_comp = ''.join(IDX_TO_NUCLEOTIDE[int(i)] for i in example['rev_comp_labels'])
             print(f"{orig_seq}\t{rev_comp}")
         print()
 
