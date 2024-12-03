@@ -85,7 +85,7 @@ def create_model(implementation: str, model_name: str, dataset_name: str, num_ep
     
     if checkpoint_path:
         print(f"\nLoading model from checkpoint: {checkpoint_path}")
-        model = BaseDNAModel.from_pretrained(checkpoint_path).to(device)
+        model = BaseDNAModel.from_pretrained(checkpoint_path, model_name=model_name).to(device)
         data_generator = model.data_generator
     else:
         # Initialize components with proper config (existing code)
