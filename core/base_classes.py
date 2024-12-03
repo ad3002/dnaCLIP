@@ -96,6 +96,9 @@ class BaseDNAModel(nn.Module):
         if not os.path.exists(checkpoint_path):
             raise ValueError(f"Checkpoint path does not exist: {checkpoint_path}")
         
+        if model_name is None:
+            raise ValueError("model_name must be provided when loading from checkpoint")
+            
         # Load the state dict
         state_dict = torch.load(checkpoint_path, map_location='cpu')
         
@@ -103,28 +106,30 @@ class BaseDNAModel(nn.Module):
         backbone_state = {k[9:]: v for k, v in state_dict.items() if k.startswith('backbone.')}
         head_state = {k[5:]: v for k, v in state_dict.items() if k.startswith('head.')}
         
-        # Initialize components
-        config = AutoConfig.from_pretrained(
-            model_name or checkpoint_path,  # Use model_name if provided, otherwise use checkpoint_path
+        # Initialize backbone from the original model name, not the checkpoint
+        backbone = AutoModel.from_pretrained(
+            model_name,
             trust_remote_code=True,
-            tie_word_embeddings=False,
-            layer_norm_eps=1e-7
+            tie_word_embeddings=False
         )
-        backbone = AutoModel.from_config(config)
         backbone.load_state_dict(backbone_state)
         
-        # Determine head type from saved model
-        head_type = state_dict.get('head_type', 'default')
-        head_class = DNAModelRegistry.get_head_class(head_type)
-        if head_class is None:
-            raise ValueError(f"Could not find head class for type: {head_type}")
+        # Get head configuration from state dict
+        head_type = state_dict.get('head_type')
+        if head_type is None:
+            # If head_type not found, try to infer from the checkpoint path
+            implementation = checkpoint_path.split('/')[-3]  # Assuming path like outputs/implementation_name/checkpoint-xxx/
+            head_class, generator_class = DNAModelRegistry.get_implementation_classes(implementation)
+        else:
+            head_class = DNAModelRegistry.get_head_class(head_type)
+            generator_class = DNAModelRegistry.get_generator_class(head_type)
+            
+        if head_class is None or generator_class is None:
+            raise ValueError(f"Could not determine head and generator classes for checkpoint: {checkpoint_path}")
+        
+        # Initialize components
         head = head_class()
         head.load_state_dict(head_state)
-        
-        # Get data generator class
-        generator_class = DNAModelRegistry.get_generator_class(head_type)
-        if generator_class is None:
-            raise ValueError(f"Could not find generator class for type: {head_type}")
         data_generator = generator_class()
         
         # Create model instance
