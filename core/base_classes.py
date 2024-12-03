@@ -1,7 +1,9 @@
 from abc import ABC, abstractmethod
 import torch
 import torch.nn as nn
-from transformers import Trainer, TrainingArguments, PreTrainedModel
+from transformers import Trainer, TrainingArguments, PreTrainedModel, AutoConfig, AutoModel
+from dnaCLIP.core.registry import DNAModelRegistry  # Add this import
+import os
 
 class BaseDataGenerator(ABC):
     @abstractmethod
@@ -87,6 +89,55 @@ class BaseDNAModel(nn.Module):
         self.frozen = True
         for param in self.backbone.parameters():
             param.requires_grad = False
+
+    @classmethod
+    def from_pretrained(cls, checkpoint_path, model_name=None):
+        """Load model from checkpoint"""
+        if not os.path.exists(checkpoint_path):
+            raise ValueError(f"Checkpoint path does not exist: {checkpoint_path}")
+        
+        # Load the state dict
+        state_dict = torch.load(checkpoint_path, map_location='cpu')
+        
+        # Extract components from state dict
+        backbone_state = {k[9:]: v for k, v in state_dict.items() if k.startswith('backbone.')}
+        head_state = {k[5:]: v for k, v in state_dict.items() if k.startswith('head.')}
+        
+        # Initialize components
+        config = AutoConfig.from_pretrained(
+            model_name or checkpoint_path,  # Use model_name if provided, otherwise use checkpoint_path
+            trust_remote_code=True,
+            tie_word_embeddings=False,
+            layer_norm_eps=1e-7
+        )
+        backbone = AutoModel.from_config(config)
+        backbone.load_state_dict(backbone_state)
+        
+        # Determine head type from saved model
+        head_type = state_dict.get('head_type', 'default')
+        head_class = DNAModelRegistry.get_head_class(head_type)
+        if head_class is None:
+            raise ValueError(f"Could not find head class for type: {head_type}")
+        head = head_class()
+        head.load_state_dict(head_state)
+        
+        # Get data generator class
+        generator_class = DNAModelRegistry.get_generator_class(head_type)
+        if generator_class is None:
+            raise ValueError(f"Could not find generator class for type: {head_type}")
+        data_generator = generator_class()
+        
+        # Create model instance
+        model = cls(backbone, head, data_generator)
+        return model
+
+    def save_pretrained(self, save_path):
+        """Save model checkpoint"""
+        os.makedirs(os.path.dirname(save_path), exist_ok=True)
+        state_dict = self.state_dict()
+        # Add head type to state dict for loading
+        state_dict['head_type'] = self.head.__class__.__name__
+        torch.save(state_dict, save_path)
 
 class BaseTrainer(Trainer):
     def __init__(self, *args, **kwargs):
