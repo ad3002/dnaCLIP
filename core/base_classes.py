@@ -120,8 +120,12 @@ class BaseTrainer(Trainer):
     @staticmethod
     def get_default_args(output_dir: str, num_train_epochs: int = 10, nocheckpoint: bool = False) -> TrainingArguments:
         """Get default training arguments"""
+        from datetime import datetime
+        run_name = f"run_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+        
         return TrainingArguments(
             output_dir=output_dir,
+            run_name=run_name,  # Add unique run name
             learning_rate=2e-5,
             lr_scheduler_type="constant_with_warmup",
             warmup_ratio=0.1,
