@@ -100,7 +100,7 @@ class ReverseComplementDataGenerator(BaseDataGenerator):
         return processed_dataset
 
 class ReverseComplementHead(BaseHead):
-    def __init__(self, input_dim=768):
+    def __init__(self, input_dim=1024):  # Changed default from 768 to 1024
         super().__init__()
         self.dense = nn.Linear(input_dim, input_dim)
         self.layer_norm = nn.LayerNorm(input_dim)
