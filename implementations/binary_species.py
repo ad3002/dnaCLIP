@@ -86,7 +86,8 @@ class BinarySpeciesDataGenerator(BaseDataGenerator):
         return tokenized_dataset
 
 class BinarySpeciesTrainer(BaseTrainer):
-    def compute_loss(self, model, inputs, return_outputs=False):
+    def compute_loss(self, model, inputs, return_outputs=False, **kwargs):
+        """Compute loss for binary classification"""
         labels = inputs.pop("labels")
         outputs = model(**inputs)
         logits = outputs.get("logits")
