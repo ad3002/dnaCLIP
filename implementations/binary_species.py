@@ -33,6 +33,10 @@ class BinarySpeciesHead(BaseHead):
         return (outputs["logits"].squeeze() > 0.5).float()
 
 class BinarySpeciesDataGenerator(BaseDataGenerator):
+    def __init__(self):
+        super().__init__()
+        self.data_collator = None  # Will be set in prepare_dataset
+
     def generate_features(self, sequence):
         return sequence
     
@@ -67,7 +71,7 @@ class BinarySpeciesDataGenerator(BaseDataGenerator):
                 examples["sequence"],
                 truncation=True,
                 max_length=512,  # Add explicit max length
-                padding=False,
+                padding='max_length',  # Changed to fixed-length padding
                 return_tensors=None
             )
         
