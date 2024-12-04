@@ -113,7 +113,7 @@ class BendabilityDataGenerator(BaseDataGenerator):
         return [self.calculate_bendability(sequence)]
 
 class BendabilityHead(BaseHead):
-    def __init__(self, input_dim=768):
+    def __init__(self, input_dim=1024):
         super().__init__()
         self.regressor = nn.Sequential(
             nn.Linear(input_dim, 256),

@@ -55,7 +55,7 @@ class PromoterDataGenerator(BaseDataGenerator):
         return dataset.map(preprocess_function, batched=True)
 
 class PromoterHead(BaseHead):
-    def __init__(self, input_dim=768, n_classes=2):
+    def __init__(self, input_dim=1024, n_classes=2):
         super().__init__()
         self.classifier = nn.Sequential(
             nn.Linear(input_dim, 256),
