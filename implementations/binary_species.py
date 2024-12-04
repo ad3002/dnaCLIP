@@ -5,6 +5,8 @@ from dnaCLIP.core.base_classes import BaseHead, BaseDataGenerator, BaseTrainer
 from dnaCLIP.core.registry import DNAModelRegistry
 from sklearn.metrics import accuracy_score, precision_score, recall_score, f1_score
 import numpy as np
+from datasets import Dataset, DatasetDict
+import pandas as pd
 
 class BinarySpeciesHead(BaseHead):
     def __init__(self, hidden_size=1024):
@@ -32,12 +34,34 @@ class BinarySpeciesHead(BaseHead):
 
 class BinarySpeciesDataGenerator(BaseDataGenerator):
     def generate_features(self, sequence):
-        """Generate features from a DNA sequence"""
-        # Not used in this implementation as we use raw sequences
         return sequence
+    
+    def load_tsv_files(self, train_path, val_path=None, test_path=None):
+        """Load dataset from tab-separated files"""
+        datasets = {}
+        
+        # Load train set
+        train_df = pd.read_csv(train_path, sep='\t', names=['sequence', 'label'])
+        datasets['train'] = Dataset.from_pandas(train_df)
+        
+        # Load validation set if provided
+        if val_path:
+            val_df = pd.read_csv(val_path, sep='\t', names=['sequence', 'label'])
+            datasets['validation'] = Dataset.from_pandas(val_df)
+            
+        # Load test set if provided
+        if test_path:
+            test_df = pd.read_csv(test_path, sep='\t', names=['sequence', 'label'])
+            datasets['test'] = Dataset.from_pandas(test_df)
+            
+        return DatasetDict(datasets)
     
     def prepare_dataset(self, dataset, tokenizer):
         """Prepare dataset for training"""
+        if isinstance(dataset, str):
+            # If dataset is a file path, load it
+            dataset = self.load_tsv_files(dataset)
+        
         def tokenize_function(examples):
             return tokenizer(
                 examples["sequence"],

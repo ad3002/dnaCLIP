@@ -114,7 +114,14 @@ def create_model(implementation: str, model_name: str, dataset_name: str, num_ep
         model = BaseDNAModel(backbone, head, data_generator, frozen=frozen).to(device)
     
     # Prepare dataset
-    dataset = load_dataset(dataset_name)['train'].train_test_split(test_size=0.1)
+    if os.path.exists(dataset_name):
+        # If dataset_name is a file path, use it directly
+        dataset = dataset_name
+        test_size = None  # Don't split if using file path
+    else:
+        # Otherwise load from Hugging Face
+        dataset = load_dataset(dataset_name)['train'].train_test_split(test_size=0.1)
+        
     tokenized_dataset = data_generator.prepare_dataset(dataset, tokenizer)
     
     # Create trainer with default arguments
@@ -123,11 +130,16 @@ def create_model(implementation: str, model_name: str, dataset_name: str, num_ep
         num_train_epochs=num_epochs,
         nocheckpoint=nocheckpoint
     )
+    
+    # Handle different dataset formats
+    train_dataset = tokenized_dataset["train"]
+    eval_dataset = tokenized_dataset.get("validation", tokenized_dataset.get("test"))
+    
     trainer = trainer_class(
         model=model,
         args=training_args,
-        train_dataset=tokenized_dataset["train"],
-        eval_dataset=tokenized_dataset["test"],
+        train_dataset=train_dataset,
+        eval_dataset=eval_dataset,
         tokenizer=tokenizer,
         data_collator=data_generator.data_collator
     )
