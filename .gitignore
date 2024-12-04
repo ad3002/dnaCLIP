@@ -1,9 +1,12 @@
 results.txt
-
+/taxonomy
+assembly_summary_refseq.txt
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
 *$py.class
+Pseudomonadota
+Actinomycetota
 
 # C extensions
 *.so
