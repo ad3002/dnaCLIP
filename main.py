@@ -75,7 +75,7 @@ def list_implementations():
         print(f"  Trainer: {components['trainer']}")
     print("\n")
 
-def create_model(implementation: str, model_name: str, dataset_name: str, num_epochs: int = 10, frozen: bool = False, nocheckpoint: bool = False, checkpoint_path: str = None):
+def create_model(implementation: str, model_name: str, dataset_path: str, num_epochs: int = 10, frozen: bool = False, nocheckpoint: bool = False, checkpoint_path: str = None):
     # Get implementation components from registry
     head_class, generator_class, trainer_class, test_method = DNAModelRegistry.get_implementation(implementation)
     
@@ -114,32 +114,55 @@ def create_model(implementation: str, model_name: str, dataset_name: str, num_ep
         model = BaseDNAModel(backbone, head, data_generator, frozen=frozen).to(device)
     
     # Prepare dataset
-    if os.path.exists(dataset_name):
-        # If dataset_name is a file path, use it directly
-        dataset = dataset_name
-        test_size = None  # Don't split if using file path
-    else:
-        # Otherwise load from Hugging Face
-        dataset = load_dataset(dataset_name)['train'].train_test_split(test_size=0.1)
+    if os.path.exists(dataset_path):
+        # If dataset_path is a file path, split it into train/val/test
+        base_path = Path(dataset_path)
+        train_path = str(base_path.parent / f"{base_path.stem}_train{base_path.suffix}")
+        val_path = str(base_path.parent / f"{base_path.stem}_val{base_path.suffix}")
+        test_path = str(base_path.parent / f"{base_path.stem}_test{base_path.suffix}")
         
+        if not os.path.exists(train_path):
+            # If split files don't exist, create them
+            print("Splitting dataset into train/val/test...")
+            lines = []
+            with open(dataset_path) as f:
+                lines = f.readlines()
+            random.shuffle(lines)
+            
+            # Split ratios: 80% train, 10% val, 10% test
+            train_idx = int(len(lines) * 0.8)
+            val_idx = int(len(lines) * 0.9)
+            
+            # Save splits
+            with open(train_path, 'w') as f:
+                f.writelines(lines[:train_idx])
+            with open(val_path, 'w') as f:
+                f.writelines(lines[train_idx:val_idx])
+            with open(test_path, 'w') as f:
+                f.writelines(lines[val_idx:])
+                
+            print(f"Created split files:\n{train_path}\n{val_path}\n{test_path}")
+        
+        dataset = data_generator.load_tsv_files(train_path, val_path, test_path)
+    else:
+        # Load from Hugging Face hub
+        dataset = load_dataset(dataset_path)['train'].train_test_split(test_size=0.1)
+    
     tokenized_dataset = data_generator.prepare_dataset(dataset, tokenizer)
     
     # Create trainer with default arguments
     training_args = BaseTrainer.get_default_args(
         f"outputs/{implementation}",
         num_train_epochs=num_epochs,
-        nocheckpoint=nocheckpoint
+        nocheckpoint=nocheckpoint,
+        has_eval=True  # We now always have eval data
     )
-    
-    # Handle different dataset formats
-    train_dataset = tokenized_dataset["train"]
-    eval_dataset = tokenized_dataset.get("validation", tokenized_dataset.get("test"))
     
     trainer = trainer_class(
         model=model,
         args=training_args,
-        train_dataset=train_dataset,
-        eval_dataset=eval_dataset,
+        train_dataset=tokenized_dataset["train"],
+        eval_dataset=tokenized_dataset["validation"],
         tokenizer=tokenizer,
         data_collator=data_generator.data_collator
     )
