@@ -12,6 +12,7 @@ from transformers import AutoTokenizer, AutoModel, DataCollatorWithPadding, Auto
 from dnaCLIP.core.base_classes import BaseDNAModel, BaseTrainer
 from dnaCLIP.core.registry import DNAModelRegistry
 from datasets import load_dataset
+import random
 
 import dnaCLIP.implementations.promoter_prediction
 import dnaCLIP.implementations.gc_content
