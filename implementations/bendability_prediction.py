@@ -195,11 +195,14 @@ class BendabilityTrainer(BaseTrainer):
             raise ValueError("No processing_class or tokenizer available. Please provide one when initializing the trainer.")
         
         for batch in dataloader:
-            inputs = {k: v.to(device) if isinstance(v, torch.Tensor) else v
-                     for k, v in batch.items()}
+            # Filter inputs to only include required keys
+            filtered_inputs = {
+                'input_ids': batch['input_ids'].to(device),
+                'attention_mask': batch['attention_mask'].to(device)
+            }
             
             with torch.no_grad():
-                outputs = model(**inputs)
+                outputs = model(**filtered_inputs)
                 predictions = outputs.cpu().numpy()
             
             labels = batch['labels'].cpu().numpy()
