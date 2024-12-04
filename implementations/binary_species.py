@@ -66,6 +66,7 @@ class BinarySpeciesDataGenerator(BaseDataGenerator):
             return tokenizer(
                 examples["sequence"],
                 truncation=True,
+                max_length=512,  # Add explicit max length
                 padding=False,
                 return_tensors=None
             )
