@@ -181,7 +181,7 @@ class BaseTrainer(Trainer):
         
         return TrainingArguments(
             output_dir=output_dir,
-            run_name=run_name,  # Add unique run name
+            run_name=run_name,
             learning_rate=2e-5,
             lr_scheduler_type="constant_with_warmup",
             warmup_ratio=0.1,
@@ -190,11 +190,11 @@ class BaseTrainer(Trainer):
             per_device_train_batch_size=32,
             per_device_eval_batch_size=32,
             num_train_epochs=num_train_epochs,
-            eval_strategy="epoch",
+            eval_strategy="no" if nocheckpoint else "epoch",  # Changed this line
             save_strategy="no" if nocheckpoint else "epoch",
             logging_strategy="epoch",
             load_best_model_at_end=not nocheckpoint,
             save_safetensors=False,
             push_to_hub=False,
-            report_to=["wandb"] if not nocheckpoint else "none"  # Changed this line only
+            report_to=["wandb"] if not nocheckpoint else "none"
         )

@@ -155,15 +155,14 @@ def create_model(implementation: str, model_name: str, dataset_path: str, num_ep
     training_args = BaseTrainer.get_default_args(
         f"outputs/{implementation}",
         num_train_epochs=num_epochs,
-        nocheckpoint=nocheckpoint,
-        has_eval=True  # We now always have eval data
+        nocheckpoint=nocheckpoint or not tokenized_dataset.get("validation")  # Disable checkpoints if no eval data
     )
     
     trainer = trainer_class(
         model=model,
         args=training_args,
         train_dataset=tokenized_dataset["train"],
-        eval_dataset=tokenized_dataset["validation"],
+        eval_dataset=tokenized_dataset.get("validation"),  # Changed this line
         tokenizer=tokenizer,
         data_collator=data_generator.data_collator
     )
